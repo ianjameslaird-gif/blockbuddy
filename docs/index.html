@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0F6B50">
+  <meta name="description" content="Backend pieces a real BlockBuddy launch would need. GitHub Pages cannot host them.">
+  <title>What a real launch needs · BlockBuddy</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="sticky-head">
+    <header class="topbar">
+      <a class="brand" href="../index.html">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect width="32" height="32" rx="8" fill="#0F6B50"/>
+          <rect x="6.5" y="7" width="8" height="8" rx="1.6" fill="#F4F1EA"/>
+          <rect x="17.5" y="7" width="8" height="8" rx="1.6" fill="#F6C48A"/>
+          <rect x="6.5" y="18" width="8" height="8" rx="1.6" fill="#F6C48A"/>
+          <rect x="17.5" y="18" width="8" height="8" rx="1.6" fill="#F4F1EA"/>
+        </svg>
+        <span class="wordmark">Block<span>Buddy</span></span>
+      </a>
+      <a class="btn btn-secondary" href="../index.html">Back to prototype</a>
+    </header>
+  </div>
+  <main id="main" class="wrap prose">
+    <p class="eyebrow">For a real launch</p>
+    <h1>What GitHub Pages cannot host</h1>
+    <p class="lead">This prototype is a static site. Accounts, listings, chats and document previews stay in the browser. A public launch of BlockBuddy needs a backend. GitHub Pages can only serve files like these.</p>
+    <div class="banner banner-warn">
+      <h2>Pages is not a server</h2>
+      <p>GitHub Pages cannot sign people in, store private documents, run a database, deliver chat, or hold a moderation queue.</p>
+    </div>
+
+    <h2>Authentication</h2>
+    <p>Real accounts need sign-up, sign-in, password reset and sessions that expire. Passwords must be hashed. A later Singapore step could add Singpass or MyInfo so residence is checked without relying only on uploaded letters.</p>
+
+    <h2>Private document storage, with retention</h2>
+    <p>Proof of residence belongs in a private bucket, encrypted, and visible only to authorised reviewers. Neighbours never receive a link. Suggested rule: delete each file 90 days after a decision, whether the member was approved or the case was closed. Redaction should happen before the file is stored. The prototype never uploads a file.</p>
+
+    <h2>A database</h2>
+    <p>Communities, members, verification status, listings, reports and blocks need a database. Each feed is a query for one verified community, not a public folder. Unit numbers stay in the review record and are stripped from profiles, listings and chat.</p>
+
+    <h2>Realtime chat</h2>
+    <p>Private threads need a websocket or a similar service, with block rules enforced on the server. Messages in this prototype are saved only on the device.</p>
+
+    <h2>Moderation</h2>
+    <p>Reviewers need a queue for residence documents and for member reports, plus an audit log of who opened a document and when the decision was made. Reports in the prototype are stored locally so the flow can be tried. Nobody else can see them.</p>
+  </main>
+</body>
+</html>
