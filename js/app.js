@@ -224,7 +224,10 @@
       preferredName: "Preview Neighbour",
       email: "preview@example.com",
       bio: "",
-      communityId: "preview",
+      communityId: BBData.community.id,
+      communityName: BBData.community.name,
+      residentLabel: BBData.community.residentLabel,
+      communitySlug: "skypeak-bukit-batok",
       createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
       isAdmin: localPreview() === "admin",
       verification: {
@@ -248,6 +251,85 @@
     var preview = localPreview();
     if (preview === "verify" || preview === "admin") return previewUser();
     return null;
+  }
+
+  function communityCatalog() {
+    var rows = BBStore && BBStore.communities ? BBStore.communities() : null;
+    if (rows && rows.length) return rows;
+    var fallback = window.BBConfig && BBConfig.communities;
+    return fallback && fallback.length ? fallback.slice() : [];
+  }
+
+  function communityBySlug(slug) {
+    var found = null;
+    communityCatalog().forEach(function (row) {
+      if (row.slug === slug) found = row;
+    });
+    return found;
+  }
+
+  function sessionCommunity() {
+    var user = activeUser();
+    if (!user) return null;
+    if (user.communityName) {
+      return {
+        id: user.communityId || "",
+        name: user.communityName,
+        residentLabel: user.residentLabel || (user.communityName + " resident"),
+        slug: user.communitySlug || ""
+      };
+    }
+    if (BBData.community && BBData.community.name && (!user.communityId || user.communityId === BBData.community.id)) {
+      return BBData.community;
+    }
+    return null;
+  }
+
+  function placeName() {
+    var community = sessionCommunity();
+    return community && community.name ? community.name : "your community";
+  }
+
+  function residentPhrase() {
+    var community = sessionCommunity();
+    if (community && community.residentLabel) return community.residentLabel;
+    if (community && community.name) return community.name + " resident";
+    return "a resident";
+  }
+
+  function pilotNames() {
+    return communityCatalog().map(function (row) { return row.name; });
+  }
+
+  function pilotSentence() {
+    var names = pilotNames();
+    if (!names.length) return "Pilot communities in Bukit Batok.";
+    if (names.length === 1) return "Pilot community in Bukit Batok: " + names[0] + ".";
+    return "Pilot communities in Bukit Batok: " + names.slice(0, -1).join(", ") + " and " + names[names.length - 1] + ".";
+  }
+
+  function communitySelectOptions(selected, blank) {
+    var html = '<option value="">' + esc(blank || "Choose your community") + "</option>";
+    communityCatalog().forEach(function (row) {
+      html += '<option value="' + esc(row.slug) + '"' + (selected === row.slug ? " selected" : "") + ">" + esc(row.name) + "</option>";
+    });
+    return html;
+  }
+
+  function communityNameForId(id) {
+    var found = "";
+    communityCatalog().forEach(function (row) {
+      if (id && row.id && row.id === id) found = row.name;
+    });
+    return found || "Community";
+  }
+
+  function rowMatchesCommunity(row, slug) {
+    if (!slug) return true;
+    var chosen = communityBySlug(slug);
+    if (!chosen) return false;
+    if (!chosen.id || !row || !row.community_id) return true;
+    return row.community_id === chosen.id;
   }
 
   function settle(value) {
@@ -326,12 +408,13 @@
   }
 
   function footer() {
-    return '<footer class="site-foot"><p>BlockBuddy · Good finds, right around the block.</p><p>SkyPeak @ Bukit Batok pilot. <a href="docs/index.html">How BlockBuddy works</a></p></footer>';
+    var place = activeUser() ? esc(placeName()) + "." : esc(pilotSentence());
+    return '<footer class="site-foot"><p>BlockBuddy · Good finds, right around the block.</p><p>' + place + ' <a href="docs/index.html">How BlockBuddy works</a></p></footer>';
   }
 
   function gate(kind, user) {
     if (kind === "sign-in") {
-      return '<section class="banner banner-info"><h1>Sign in to continue</h1><p>The SkyPeak marketplace is for residents with an account.</p><div class="row-actions"><a class="btn btn-primary" href="#/">Sign in</a><a class="btn btn-secondary" href="#/register">Create an account</a></div></section>';
+      return '<section class="banner banner-info"><h1>Sign in to continue</h1><p>Pilot communities in Bukit Batok are for residents with an account.</p><div class="row-actions"><a class="btn btn-primary" href="#/">Sign in</a><a class="btn btn-secondary" href="#/register">Create an account</a></div></section>';
     }
     var status = user.verification.status;
     var copy = {
@@ -408,7 +491,7 @@
     return '<form class="filters' + (sheet ? " sheet" : "") + '" data-form="filters" id="filter-form"' +
       (sheet ? ' data-dialog role="dialog" aria-modal="true" aria-labelledby="filter-title"' : ' aria-label="Filter listings"') + ">" +
       '<h2 id="filter-title">Filters</h2>' +
-      "<p class=\"hint\">Results stay inside SkyPeak @ Bukit Batok.</p>" +
+      "<p class=\"hint\">Results stay inside " + esc(placeName()) + ".</p>" +
       filterFields(params) +
       '<div class="row-actions"><button class="btn btn-primary" type="submit">Apply filters</button>' +
       '<button class="btn btn-secondary" type="button" data-action="clear-filters">Clear all</button>' +
@@ -502,7 +585,7 @@
       '<header class="topbar' + (showSearch ? "" : " no-search") + '">' +
       '<a class="brand" href="#/">' + BBArt.logo() + '<span class="wordmark">Block<span>Buddy</span></span></a>' +
       (showSearch
-        ? '<form class="search" role="search" data-form="search"><label class="sr-only" for="site-search">Search SkyPeak listings</label><input id="site-search" name="q" type="search" placeholder="Search the SkyPeak feed" maxlength="80" value="' + esc(q) + '"><button class="btn btn-primary" type="submit">Search</button></form>'
+        ? '<form class="search" role="search" data-form="search"><label class="sr-only" for="site-search">Search ' + esc(placeName()) + ' listings</label><input id="site-search" name="q" type="search" placeholder="Search the ' + esc(placeName()) + ' feed" maxlength="80" value="' + esc(q) + '"><button class="btn btn-primary" type="submit">Search</button></form>'
         : "") +
       '<div class="top-actions">' +
       (verified(user) ? '<a class="btn btn-secondary btn-small post-link" href="#/listing/new">Post</a>' : "") +
@@ -590,7 +673,7 @@
       card = '<section class="hero-card"><p class="eyebrow">Your account</p><h2>Hello, ' + esc(first) + '</h2>' +
         '<p class="status-pill status-' + esc(user.verification.status) + '">' + esc(statusLabel(user.verification.status)) + "</p>" +
         "<p>" + (ok
-          ? "You can browse the SkyPeak feed, post a listing, or pick up a conversation."
+          ? "You can browse the " + esc(placeName()) + " feed, post a listing, or pick up a conversation."
           : "Finish residence verification and the marketplace opens.") + "</p>" +
         '<div class="stack-actions"><a class="btn btn-primary" href="' + (ok ? "#/feed" : "#/verify") + '">' + (ok ? "Go to the feed" : "Continue verification") + '</a>' +
         '<button type="button" class="btn btn-ghost" data-action="sign-out">Sign out</button></div></section>';
@@ -608,13 +691,26 @@
         (BBStore.error && BBStore.error() ? '<p class="field-error" role="alert">' + esc(BBStore.error()) + "</p>" : "") +
         "</section>";
     }
-    return '<div class="hero"><div class="hero-copy"><p class="eyebrow">SkyPeak @ Bukit Batok</p><h1>Good finds, right around the block.</h1>' +
-      '<p class="lead">A neighbourly marketplace for one HDB block. Buy, sell, give away or trade with people who actually live here. More communities can join after this pilot.</p></div>' +
+    var hero;
+    if (user) {
+      hero = '<div class="hero-copy"><p class="eyebrow">' + esc(placeName()) + '</p><h1>Good finds, right around the block.</h1>' +
+        '<p class="lead">A neighbourly marketplace for ' + esc(placeName()) + '. Buy, sell, give away or trade with people who actually live here.</p></div>';
+    } else {
+      var names = pilotNames().map(function (name) { return "<li>" + esc(name) + "</li>"; }).join("");
+      hero = '<div class="hero-copy"><p class="eyebrow">Pilot communities in Bukit Batok</p><h1>Good finds, right around the block.</h1>' +
+        '<p class="lead">A neighbourly marketplace for one HDB community at a time. Buy, sell, give away or trade with people who live in the same block.</p>' +
+        (names ? '<p>The pilot covers:</p><ul class="pilot-list">' + names + "</ul>" : "") +
+        "</div>";
+    }
+    var residentLine = user
+      ? "Profiles show “" + esc(residentPhrase()) + "”, not a door number."
+      : "Profiles show the community you live in, not a door number.";
+    return '<div class="hero">' + hero +
       card +
       '<div class="hero-aside">' + BBArt.hero() +
       '<ul class="trust"><li><h2>Verified residents</h2><p>The feed opens after a residence check.</p></li>' +
       "<li><h2>Private documents</h2><p>Proof of address is stored privately for reviewers and deleted " + BBData.retentionDays + " days after a decision.</p></li>" +
-      "<li><h2>No unit numbers</h2><p>Profiles show “SkyPeak @ Bukit Batok resident”, not a door number.</p></li></ul></div></div>";
+      "<li><h2>No unit numbers</h2><p>" + residentLine + "</p></li></ul></div></div>";
   }
 
   function viewForgot() {
@@ -647,6 +743,8 @@
     if (ui.pendingEmail && !window.BBDemo) {
       return '<section class="panel"><p class="eyebrow">Join the pilot</p><h1>Check your email</h1><div class="banner banner-ok" role="status"><h2>Account created</h2><p>Open the confirmation link to finish signing up. The free mailer only sends a few messages an hour, so it can take a minute. Then come back and sign in.</p></div><a class="btn btn-primary" href="#/">Back to sign in</a></section>';
     }
+    var chosenSlug = val("community", "");
+    var chosen = communityBySlug(chosenSlug);
     return '<section class="panel"><p class="eyebrow">Join the pilot</p><h1>Create an account</h1>' +
       "<p>Your public name is a preferred name. Neighbours will not see your email or unit number.</p>" +
       formAlert(ui.fieldErrors) +
@@ -655,8 +753,9 @@
       '<div class="field"><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" autocomplete="email" maxlength="80" required value="' + esc(val("email", "")) + '"' + (fieldError("email") ? ' aria-invalid="true"' : "") + ">" + errorText("email", "reg-email") + "</div>" +
       '<div class="field"><label for="reg-password">Password</label><div class="password-row"><input id="reg-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required' + (fieldError("password") ? ' aria-invalid="true"' : "") + describedBy("reg-password", "password", true) + '><button type="button" class="btn btn-secondary btn-small" data-action="toggle-password" aria-controls="reg-password" aria-pressed="false">Show</button></div><p class="hint" id="reg-password-hint">At least 8 characters. ' + (window.BBDemo ? "This demo stores it only on your device." : "Supabase stores a hash, not the password itself.") + "</p>" + errorText("password", "reg-password") + "</div>" +
       '<div class="field"><label for="reg-confirm">Confirm password</label><input id="reg-confirm" name="confirm" type="password" autocomplete="new-password" maxlength="80" required' + (fieldError("confirm") ? ' aria-invalid="true"' : "") + ">" + errorText("confirm", "reg-confirm") + "</div>" +
-      '<div class="field"><p id="community-label">Community</p><p class="readonly" aria-labelledby="community-label">SkyPeak @ Bukit Batok</p><p class="hint">This pilot is one block. The service is shaped so more HDB communities can be added later.</p></div>' +
-      '<label class="check"><input type="checkbox" name="resident"' + (val("resident") === "on" ? " checked" : "") + "> I live at SkyPeak @ Bukit Batok</label>" +
+      '<div class="field"><label for="reg-community">Community</label><select id="reg-community" name="community" required' + (fieldError("community") ? ' aria-invalid="true"' : "") + describedBy("reg-community", "community", true) + ">" +
+      communitySelectOptions(chosenSlug) + '</select><p class="hint" id="reg-community-hint">Pick the HDB community you live in. Your feed stays inside that community.</p>' + errorText("community", "reg-community") + "</div>" +
+      '<label class="check"><input type="checkbox" name="resident"' + (val("resident") === "on" ? " checked" : "") + '> <span id="resident-label">I live at ' + esc(chosen ? chosen.name : "the community I selected") + "</span></label>" +
       (fieldError("resident") ? '<p class="field-error">' + esc(fieldError("resident")) + "</p>" : "") +
       "<p>Be honest about condition, keep unit numbers out of listings and chat, and meet in a common area.</p>" +
       '<label class="check"><input type="checkbox" name="guidelines"' + (val("guidelines") === "on" ? " checked" : "") + "> I agree to the community guidelines</label>" +
@@ -672,10 +771,10 @@
     syncDoc(user);
     var v = user.verification;
     var status = v.status;
-    var html = '<p class="eyebrow">SkyPeak @ Bukit Batok</p><h1>Residence verification</h1>' +
-      "<p>The feed is only for people who live at SkyPeak. A residence check keeps strangers out of the block’s marketplace.</p>";
+    var html = '<p class="eyebrow">' + esc(placeName()) + '</p><h1>Residence verification</h1>' +
+      "<p>The feed is only for people who live at " + esc(placeName()) + ". A residence check keeps strangers out of the community’s marketplace.</p>";
     if (route.params.get("welcome")) {
-      html += '<div class="banner banner-ok" role="status"><h2>Account created</h2><p>Next, confirm you live at SkyPeak. You can use the sample bill if you do not have a photo handy.</p></div>';
+      html += '<div class="banner banner-ok" role="status"><h2>Account created</h2><p>Next, confirm you live at ' + esc(placeName()) + '. You can use the sample bill if you do not have a photo handy.</p></div>';
     }
     html += '<div class="banner ' + bannerTone(status) + '" id="status-banner"><p class="status-pill status-' + esc(status) + '">' + esc(statusLabel(status)) + "</p><h2>" + esc(statusLabel(status)) + "</h2><p>" + esc(statusCopy(status, v)) + "</p>";
     if (v.updatedAt && status !== "none") html += '<p class="hint">Updated ' + esc(timeAgo(v.updatedAt)) + ".</p>";
@@ -695,9 +794,9 @@
       if (window.BBDemo) html += '<p class="hint">Need another status? Use Reviewer tools in the top bar.</p>';
     }
     if (status === "none" || status === "action_needed") html += uploadForm();
-    html += '<div class="panel"><h2>What to upload</h2><p>A recent utility bill, town council letter or tenancy letter that shows your name and SkyPeak address.</p>' +
+    html += '<div class="panel"><h2>What to upload</h2><p>A recent utility bill, town council letter or tenancy letter that shows your name and ' + esc(placeName()) + ' address.</p>' +
       "<h2>What to cover</h2><p>Cover account numbers, card numbers and other financial details. Leave your name and address visible so a reviewer can match them. Drag a box on the preview, or use Add a cover box.</p>" +
-      "<h2>Who can see it</h2><p>Only reviewers. It never appears on your profile, listings or chats. Neighbours see “" + esc(BBData.community.residentLabel) + "”, never your unit number.</p>" +
+      "<h2>Who can see it</h2><p>Only reviewers. It never appears on your profile, listings or chats. Neighbours see “" + esc(residentPhrase()) + "”, never your unit number.</p>" +
       "<h2>How long it is kept</h2><p>" + (window.BBDemo
         ? "In the live service, documents are stored privately and deleted " + BBData.retentionDays + " days after a decision. This demo keeps the preview in your browser only and does not upload it."
         : "The file is stored in a private bucket. You and reviewers can open it. Other neighbours cannot. It is deleted " + BBData.retentionDays + " days after a decision.") + "</p></div>";
@@ -713,9 +812,15 @@
 
   function statusCopy(status, record) {
     if (status === "submitted") return "We have your document. A reviewer has not opened it yet. Other neighbours cannot open it either.";
-    if (status === "under_review") return "A reviewer is checking that your name and SkyPeak address match.";
-    if (status === "verified") return "You’re in. You can use the SkyPeak feed, post listings and message neighbours.";
-    if (status === "action_needed") return record.actionReason || BBData.actionReason;
+    if (status === "under_review") return "A reviewer is checking that your name and " + placeName() + " address match.";
+    if (status === "verified") return "You’re in. You can use the " + placeName() + " feed, post listings and message neighbours.";
+    if (status === "action_needed") {
+      var reason = (record && record.actionReason) || "";
+      if (!reason || reason.indexOf("We could not confirm") === 0 || reason.indexOf("SkyPeak") !== -1) {
+        return "We could not confirm the " + placeName() + " address. Please upload a clearer photo of a recent bill or letter. Cover account numbers and other financial details, and leave your name and address visible.";
+      }
+      return reason;
+    }
     return window.BBDemo
       ? "Choose a photo to start. Nothing is sent to a server in this prototype."
       : "Choose a photo to start. Redaction is burned into the image on this device before it is uploaded.";
@@ -777,14 +882,14 @@
       return '<section class="banner banner-bad" role="alert"><h1>We couldn’t load the community feed</h1><p>' + esc(ui.feedErrorMessage || "This is a simulated error so the retry state can be reviewed. Nothing is wrong with your account.") + '</p><button type="button" class="btn btn-primary" data-action="retry-feed">Try again</button></section>';
     }
     if (ui.loading === "feed") {
-      return '<header class="page-head"><p class="eyebrow">Your community</p><h1>SkyPeak @ Bukit Batok</h1></header>' + skeletons(4);
+      return '<header class="page-head"><p class="eyebrow">Your community</p><h1>' + esc(placeName()) + "</h1></header>" + skeletons(4);
     }
     var listings = BBStore.visibleListings();
     var quick = '<div class="quick" aria-label="Shortcuts"><a href="#/search">All</a><a href="#/search?type=sell">For sale</a><a href="#/search?type=giveaway">Give away</a><a href="#/search?free=1">Free</a><a href="#/search?type=trade">Trade</a><a href="#/search?type=wanted">Wanted</a></div>';
     var grid = listings.length
       ? '<div class="grid-cards">' + listings.map(listingCard).join("") + "</div>"
       : emptyState("No listings to show", "If you have blocked neighbours, their items stay hidden. You can unblock them from your profile.", "#/profile", "Review blocks");
-    return '<header class="page-head"><p class="eyebrow">Your community</p><h1>SkyPeak @ Bukit Batok</h1><p>Verified neighbours only. Unit numbers stay off the feed. ' + listings.length + (listings.length === 1 ? " listing." : " listings.") + "</p></header>" + quick + grid;
+    return '<header class="page-head"><p class="eyebrow">Your community</p><h1>' + esc(placeName()) + '</h1><p>Verified neighbours only. Unit numbers stay off the feed. ' + listings.length + (listings.length === 1 ? " listing." : " listings.") + "</p></header>" + quick + grid;
   }
 
   function viewSearch(route) {
@@ -800,12 +905,12 @@
       var listings = searchQuery(params);
       var head = '<div class="results-head"><h2>' + listings.length + (listings.length === 1 ? " result" : " results") + '</h2><button type="button" class="btn btn-secondary filters-open" data-action="open-filters">Filters</button></div>' + chips(params);
       if (!listings.length) {
-        results = head + emptyState("Nothing matches", "Try another word, or clear a filter. Search never leaves SkyPeak @ Bukit Batok.", "#/search", "Clear search");
+        results = head + emptyState("Nothing matches", "Try another word, or clear a filter. Search never leaves " + placeName() + ".", "#/search", "Clear search");
       } else {
         results = head + '<div class="grid-cards">' + listings.map(listingCard).join("") + "</div>";
       }
     }
-    return '<header class="page-head"><p class="eyebrow">Search</p><h1>Find something on the block</h1><p>Filters apply to SkyPeak listings only. On a phone they open as a sheet. On a wide screen they stay in the sidebar.</p></header>' +
+    return '<header class="page-head"><p class="eyebrow">Search</p><h1>Find something on the block</h1><p>Filters apply to ' + esc(placeName()) + ' listings only. On a phone they open as a sheet. On a wide screen they stay in the sidebar.</p></header>' +
       '<div class="search-layout">' +
       (desktop ? filterForm(params, false) : "") +
       "<div>" + results + "</div></div>";
@@ -821,17 +926,17 @@
     if (blocked) return blocked;
     if (ui.loading === "listing") return "<h1>Listing</h1>" + skeletons(1);
     var listing = BBStore.listingById(route.id);
-    if (!listing || (window.BBDemo && listing.communityId !== BBData.community.id)) {
-      return emptyState("That listing is not available", "It may have been deleted, or it is outside SkyPeak.", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
-    }
     var me = activeUser();
+    if (!listing || (window.BBDemo && me && listing.communityId !== me.communityId)) {
+      return emptyState("That listing is not available", "It may have been deleted, or it is outside " + placeName() + ".", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
+    }
     var owner = BBStore.userById(listing.ownerId);
     if (me.id !== listing.ownerId && BBStore.isBlocked(me.id, listing.ownerId)) {
       return '<section class="banner banner-warn"><h1>This listing is hidden</h1><p>You blocked this neighbour, so their items stay out of your feed.</p><button type="button" class="btn btn-secondary" data-action="unblock" data-user="' + esc(listing.ownerId) + '">Unblock</button></section>';
     }
     var photo = safeImg(listing.photo);
-    var posted = route.params.get("posted") ? '<div class="banner banner-ok" role="status"><h2>Your listing is live</h2><p>Neighbours in SkyPeak can see it now. It does not show your unit number.</p></div>' : "";
-    var updated = route.params.get("updated") ? '<div class="banner banner-ok" role="status"><h2>Changes saved</h2><p>The SkyPeak feed is using the new details.</p></div>' : "";
+    var posted = route.params.get("posted") ? '<div class="banner banner-ok" role="status"><h2>Your listing is live</h2><p>Neighbours in ' + esc(placeName()) + ' can see it now. It does not show your unit number.</p></div>' : "";
+    var updated = route.params.get("updated") ? '<div class="banner banner-ok" role="status"><h2>Changes saved</h2><p>The ' + esc(placeName()) + ' feed is using the new details.</p></div>' : "";
     var ownerBlock = "";
     if (me.id === listing.ownerId) {
       ownerBlock = '<div class="panel"><h2>Your listing</h2><div class="row-actions"><a class="btn btn-secondary" href="#/listing/' + esc(listing.id) + '/edit">Edit</a>' +
@@ -852,7 +957,7 @@
       "<h1>" + esc(listing.title) + "</h1><p class=\"price\">" + esc(priceLabel(listing)) + "</p>" +
       "<p class=\"meta\">" + esc(categoryLabel(listing.category)) + (listing.condition && listing.condition !== "Any" ? " · " + esc(listing.condition) : "") + " · " + esc(timeAgo(listing.createdAt)) + "</p>" +
       "<p>" + esc(listing.description) + "</p>" +
-      (owner ? '<a class="seller" href="#/member/' + esc(owner.id) + '">' + avatar(owner.preferredName) + "<div><strong>" + esc(owner.preferredName) + "</strong><p>" + esc(BBData.community.residentLabel) + "</p></div></a>" : "") +
+      (owner ? '<a class="seller" href="#/member/' + esc(owner.id) + '">' + avatar(owner.preferredName) + "<div><strong>" + esc(owner.preferredName) + "</strong><p>" + esc(residentPhrase()) + "</p></div></a>" : "") +
       '<div class="stack-top">' + ownerBlock + "</div>" +
       '<p class="hint">Meet at the lobby, letterboxes or void deck. Don’t share your unit number in chat.</p></div></div>';
   }
@@ -877,7 +982,7 @@
       return '<label class="choice"><input type="radio" name="type" value="' + row[0] + '"' + (type === row[0] ? " checked" : "") + "><span>" + row[1] + "</span></label>";
     }).join("");
     var priceLabelText = type === "wanted" ? "Budget (S$)" : type === "trade" ? "Cash difference, if any (S$)" : "Price (S$)";
-    return '<p class="eyebrow">' + (existing ? "Edit listing" : "New listing") + "</p><h1>" + (existing ? "Edit your listing" : "Post to SkyPeak") + "</h1>" +
+    return '<p class="eyebrow">' + (existing ? "Edit listing" : "New listing") + "</p><h1>" + (existing ? "Edit your listing" : "Post to " + esc(placeName())) + "</h1>" +
       formAlert(ui.fieldErrors) +
       '<form data-form="listing" data-persist novalidate>' +
       (existing ? '<input type="hidden" name="id" value="' + esc(existing.id) + '">' : "") +
@@ -963,7 +1068,7 @@
       : '<form class="composer" data-form="chat" data-thread="' + esc(thread.id) + '"><label class="sr-only" for="chat-body">Message</label><textarea id="chat-body" name="body" maxlength="1000" data-watch="chat" placeholder="Write a message">' + esc(ui.chatDraft || "") + '</textarea><button class="btn btn-primary" type="submit">Send</button></form>' +
         '<p id="chat-flag" class="field-error" hidden>Unit numbers stay off chat. Suggest the lobby, letterboxes or void deck instead.</p><p id="chat-error" class="field-error" hidden></p>';
     var pane = '<div class="thread-pane"><div class="chat-head"><a class="btn btn-ghost btn-small chat-back" href="#/messages">Back to messages</a>' +
-      "<h1>" + esc(other ? other.preferredName : "Neighbour") + "</h1><p>" + esc(BBData.community.residentLabel) + "</p>" +
+      "<h1>" + esc(other ? other.preferredName : "Neighbour") + "</h1><p>" + esc(residentPhrase()) + "</p>" +
       (listing ? '<p><a href="#/listing/' + esc(listing.id) + '">About: ' + esc(listing.title) + "</a></p>" : "") +
       '<div class="row-actions"><button type="button" class="btn btn-secondary btn-small" data-action="open-report" data-type="member" data-id="' + esc(otherId) + '" data-label="' + esc(other ? other.preferredName : "this neighbour") + '">Report</button>' +
       (blockedByMe
@@ -990,10 +1095,10 @@
         return "<li>" + esc(person ? person.preferredName : "Neighbour") + ' <button type="button" class="btn btn-ghost btn-small" data-action="unblock" data-user="' + esc(row.blockedId) + '">Unblock</button></li>';
       }).join("") + "</ul>"
       : "<p>You have not blocked anyone.</p>";
-    return '<div class="profile-top">' + avatar(user.preferredName, true) + "<div><p class=\"eyebrow\">Your profile</p><h1>" + esc(user.preferredName) + "</h1><p>" + esc(BBData.community.residentLabel) + "</p></div></div>" +
+    return '<div class="profile-top">' + avatar(user.preferredName, true) + "<div><p class=\"eyebrow\">Your profile</p><h1>" + esc(user.preferredName) + "</h1><p>" + esc(residentPhrase()) + "</p></div></div>" +
       '<p class="status-pill status-' + esc(user.verification.status) + '">' + esc(statusLabel(user.verification.status)) + '</p>' +
       '<p><a href="#/verify">Residence verification</a> · Neighbour since ' + esc(memberSince(user.createdAt)) + "</p>" +
-      "<p>Neighbours see your preferred name and “" + esc(BBData.community.residentLabel) + "”. They do not see your email, documents or unit number.</p>" +
+      "<p>Neighbours see your preferred name and “" + esc(residentPhrase()) + "”. They do not see your email, documents or unit number.</p>" +
       '<section class="panel"><h2>Edit profile</h2>' + formAlert(ui.fieldErrors) +
       '<form data-form="profile" data-persist novalidate>' +
       '<div class="field"><label for="profile-name">Preferred name</label><input id="profile-name" name="preferredName" maxlength="60" required value="' + esc(nameValue) + '"' + (fieldError("preferredName") ? ' aria-invalid="true"' : "") + ">" + errorText("preferredName", "profile-name") + "</div>" +
@@ -1013,12 +1118,12 @@
     var me = activeUser();
     if (route.id === me.id) return viewProfile();
     var person = BBStore.userById(route.id);
-    if (!person) return emptyState("Neighbour not found", "That profile is not part of the SkyPeak demo.", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
+    if (!person) return emptyState("Neighbour not found", "That profile is not part of " + placeName() + ".", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
     if (BBStore.blockedByMe(person.id)) {
       return '<section class="banner banner-warn"><h1>' + esc(person.preferredName) + " is blocked</h1><p>Their listings are hidden and chat is paused. They are not told.</p><button type=\"button\" class=\"btn btn-secondary\" data-action=\"unblock\" data-user=\"" + esc(person.id) + "\">Unblock</button></section>";
     }
     var listings = BBStore.visibleListings({ ownerId: person.id });
-    return '<div class="profile-top">' + avatar(person.preferredName, true) + "<div><h1>" + esc(person.preferredName) + "</h1><p>" + esc(BBData.community.residentLabel) + "</p><p>Neighbour since " + esc(memberSince(person.createdAt)) + "</p></div></div>" +
+    return '<div class="profile-top">' + avatar(person.preferredName, true) + "<div><h1>" + esc(person.preferredName) + "</h1><p>" + esc(residentPhrase()) + "</p><p>Neighbour since " + esc(memberSince(person.createdAt)) + "</p></div></div>" +
       (person.bio ? "<p>" + esc(person.bio) + "</p>" : "") +
       '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="message" data-user="' + esc(person.id) + '">Message</button>' +
       '<button type="button" class="btn btn-secondary" data-action="open-report" data-type="member" data-id="' + esc(person.id) + '" data-label="' + esc(person.preferredName) + '">Report</button>' +
@@ -1044,19 +1149,39 @@
           : "<p>No reports saved on this device yet.</p>");
     return '<p class="eyebrow">Help and safety</p><h1>Keep it neighbourly</h1>' +
       '<nav class="help-nav" aria-label="On this page"><a href="#/help" data-action="jump" data-target="safety-how">How it works</a><a href="#/help" data-action="jump" data-target="safety-verify">Verification</a><a href="#/help" data-action="jump" data-target="safety-meet">Meeting</a><a href="#/help" data-action="jump" data-target="safety-report">Reporting</a><a href="#/help" data-action="jump" data-target="safety-block">Blocking</a></nav>' +
-      '<div class="prose"><section id="safety-how"><h2>How BlockBuddy works</h2><p>Create an account, confirm you live at SkyPeak, then use the feed. You can sell, give something away, trade or post something you want. Message the neighbour in private.</p></section>' +
-      '<section id="safety-verify"><h2>Verification and privacy</h2><p>Reviewers need your name and SkyPeak address. They do not need account numbers. Documents are private. Neighbours only see “' + esc(BBData.community.residentLabel) + '”.</p><p>' + (window.BBDemo ? "A live service would delete documents " + BBData.retentionDays + " days after a decision. Here, the preview stays in your browser." : "Documents are deleted " + BBData.retentionDays + " days after a decision.") + ' <a href="docs/index.html">How BlockBuddy works</a>.</p></section>' +
+      '<div class="prose"><section id="safety-how"><h2>How BlockBuddy works</h2><p>' + (user
+        ? "Create an account, confirm you live at " + esc(placeName()) + ", then use the feed."
+        : "Create an account, confirm you live in one of the pilot communities in Bukit Batok (" + esc(pilotNames().join(", ")) + "), then use that community’s feed.") + " You can sell, give something away, trade or post something you want. Message the neighbour in private.</p></section>" +
+      '<section id="safety-verify"><h2>Verification and privacy</h2><p>' + (user
+        ? "Reviewers need your name and " + esc(placeName()) + " address. They do not need account numbers. Documents are private. Neighbours only see “" + esc(residentPhrase()) + "”."
+        : "Reviewers need your name and your community address. They do not need account numbers. Documents are private. Neighbours only see the community you live in, not your unit number.") + "</p><p>" + (window.BBDemo ? "A live service would delete documents " + BBData.retentionDays + " days after a decision. Here, the preview stays in your browser." : "Documents are deleted " + BBData.retentionDays + " days after a decision.") + ' <a href="docs/index.html">How BlockBuddy works</a>.</p></section>' +
       "<section id=\"safety-meet\"><h2>Meeting safely</h2><ul><li>Meet at the void deck, lobby, letterboxes or a nearby mall.</li><li>Tell someone when you are heading down.</li><li>Look at the item before you pay, and pay in person.</li><li>If something feels wrong, leave.</li><li>Don’t put your unit number, NRIC or documents in a listing or chat. Patterns like #12-345 are blocked.</li></ul></section>" +
       '<section id="safety-report"><h2>Reporting</h2><p>Report a listing or a neighbour from that screen, or send a general note here. ' + (window.BBDemo ? "In this demo the report stays on your device." : "Reviewers can see it. Other neighbours cannot.") + "</p>" + reportForm + "</section>" +
       '<section id="safety-block"><h2>Blocking</h2><p>Blocking hides that neighbour’s listings and messages in both directions. They are not notified. You can unblock from your profile.</p><p><a href="#/profile">Open your profile</a></p></section></div>';
   }
 
-  function adminStatusLinks(current) {
+  function adminHref(route, tab, status) {
+    var params = new URLSearchParams();
+    params.set("tab", tab);
+    if (tab === "queue") params.set("status", status || route.params.get("status") || "submitted");
+    var community = route.params.get("community") || "";
+    if (community) params.set("community", community);
+    return "#/admin?" + params.toString();
+  }
+
+  function adminStatusLinks(route, current) {
     var statuses = ["submitted", "under_review", "action_needed", "verified"];
     return '<div class="quick" aria-label="Submission filters">' + statuses.map(function (status) {
       var on = current === status;
-      return '<a href="#/admin?tab=queue&status=' + status + '"' + (on ? ' aria-current="page"' : "") + ">" + esc(statusLabel(status)) + "</a>";
+      return '<a href="' + adminHref(route, "queue", status) + '"' + (on ? ' aria-current="page"' : "") + ">" + esc(statusLabel(status)) + "</a>";
     }).join("") + "</div>";
+  }
+
+  function adminCommunityField(route) {
+    var current = route.params.get("community") || "";
+    return '<div class="field community-filter"><label for="admin-community">Community</label><select id="admin-community" name="admin-community">' +
+      communitySelectOptions(current, "All communities") +
+      '</select><p class="hint">The reviewer flag covers every community. Use this to show one of them.</p></div>';
   }
 
   function viewAdmin(route) {
@@ -1073,39 +1198,45 @@
     }
     var tab = route.params.get("tab") || "queue";
     var status = route.params.get("status") || "submitted";
-    var tabs = '<div class="admin-tabs" role="tablist"><a class="btn btn-small ' + (tab === "queue" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=queue&status=' + esc(status) + '">Documents</a>' +
-      '<a class="btn btn-small ' + (tab === "reports" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=reports">Reports</a>' +
-      '<a class="btn btn-small ' + (tab === "audit" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=audit">Audit log</a></div>';
+    var communitySlug = route.params.get("community") || "";
+    var communityFilter = tab === "audit" ? "" : adminCommunityField(route);
+    var tabs = '<div class="admin-tabs" role="tablist"><a class="btn btn-small ' + (tab === "queue" ? "btn-primary" : "btn-secondary") + '" href="' + adminHref(route, "queue", status) + '">Documents</a>' +
+      '<a class="btn btn-small ' + (tab === "reports" ? "btn-primary" : "btn-secondary") + '" href="' + adminHref(route, "reports") + '">Reports</a>' +
+      '<a class="btn btn-small ' + (tab === "audit" ? "btn-primary" : "btn-secondary") + '" href="' + adminHref(route, "audit") + '">Audit log</a></div>';
     var body = "";
     if (tab === "reports") {
-      var reports = BBStore.adminReports ? BBStore.adminReports() : [];
+      var reports = (BBStore.adminReports ? BBStore.adminReports() : []).filter(function (report) {
+        return rowMatchesCommunity(report, communitySlug);
+      });
       body = reports.length ? reports.map(function (report) {
         var name = report.reporter && report.reporter.display_name ? report.reporter.display_name : "Member";
-        return '<article class="panel admin-card"><p class="badge">' + esc(report.target_type) + "</p><h2>" + esc(report.reason) + "</h2><p>" + esc(report.target_label || "No label") + " · " + esc(name) + " · " + esc(timeAgo(Date.parse(report.created_at))) + "</p>" +
+        return '<article class="panel admin-card"><p class="badge">' + esc(report.target_type) + "</p><h2>" + esc(report.reason) + "</h2><p>" + esc(communityNameForId(report.community_id)) + " · " + esc(report.target_label || "No label") + " · " + esc(name) + " · " + esc(timeAgo(Date.parse(report.created_at))) + "</p>" +
           (report.details ? "<p>" + esc(report.details) + "</p>" : "") +
           '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="resolve-report" data-id="' + esc(report.id) + '">Resolve</button>' +
           (report.target_type === "listing" ? '<button type="button" class="btn btn-danger" data-action="hide-listing" data-id="' + esc(report.target_id) + '">Hide listing</button>' : "") +
           "</div></article>";
-      }).join("") : emptyState("No open reports", "Listing and member reports land here.", "#/admin?tab=reports", "Refresh");
+      }).join("") : emptyState(communitySlug ? "No open reports in this community" : "No open reports", "Listing and member reports land here.", adminHref(route, "reports"), "Refresh");
     } else if (tab === "audit") {
       var audit = BBStore.auditLog ? BBStore.auditLog() : [];
       body = audit.length ? '<ul class="queue">' + audit.map(function (row) {
         var name = row.admin && row.admin.display_name ? row.admin.display_name : "Admin";
         return "<li><strong>" + esc(row.action) + "</strong> · " + esc(name) + " · " + esc(timeAgo(Date.parse(row.created_at))) + "</li>";
-      }).join("") + "</ul>" : emptyState("No admin actions yet", "Approvals, document opens, report resolutions and hidden listings are listed here.", "#/admin?tab=audit", "Refresh");
+      }).join("") + "</ul>" : emptyState("No admin actions yet", "Approvals, document opens, report resolutions and hidden listings are listed here.", adminHref(route, "audit"), "Refresh");
     } else {
-      var queue = BBStore.adminSubmissions ? BBStore.adminSubmissions() : [];
-      body = adminStatusLinks(status) + (queue.length ? queue.map(function (row) {
+      var queue = (BBStore.adminSubmissions ? BBStore.adminSubmissions() : []).filter(function (row) {
+        return rowMatchesCommunity(row, communitySlug);
+      });
+      body = adminStatusLinks(route, status) + (queue.length ? queue.map(function (row) {
         var name = row.member && row.member.display_name ? row.member.display_name : "Member";
-        return '<article class="panel admin-card"><p class="status-pill status-' + esc(row.status) + '">' + esc(statusLabel(row.status)) + "</p><h2>" + esc(name) + "</h2><p>" + esc(row.file_name || "document") + " · " + esc(timeAgo(Date.parse(row.submitted_at))) + "</p>" +
+        return '<article class="panel admin-card"><p class="status-pill status-' + esc(row.status) + '">' + esc(statusLabel(row.status)) + "</p><h2>" + esc(name) + "</h2><p>" + esc(communityNameForId(row.community_id)) + " · " + esc(row.file_name || "document") + " · " + esc(timeAgo(Date.parse(row.submitted_at))) + "</p>" +
           (row.document_deleted_at ? "<p>The file was deleted after the retention period.</p>" : '<button type="button" class="btn btn-secondary" data-action="admin-open" data-id="' + esc(row.id) + '">Open document</button>') +
           (ui.docUrl && ui.docFor === row.id ? '<p><img class="doc-preview" alt="Redacted proof of address" src="' + safeImg(ui.docUrl) + '"></p>' : "") +
           '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="admin-decide" data-id="' + esc(row.id) + '" data-status="verified">Approve</button>' +
           '<button type="button" class="btn btn-secondary" data-action="admin-decide" data-id="' + esc(row.id) + '" data-status="under_review">Mark under review</button></div>' +
           '<form data-form="admin-note" data-id="' + esc(row.id) + '"><div class="field"><label for="note-' + esc(row.id) + '">Action needed note</label><textarea id="note-' + esc(row.id) + '" name="note" maxlength="800" required placeholder="What should the member fix? Don’t include a unit number."></textarea></div><button class="btn btn-danger" type="submit">Action needed</button></form></article>';
-      }).join("") : emptyState("Nothing in this filter", "New documents show up here as Submitted.", "#/admin?tab=queue&status=submitted", "Back to submitted"));
+      }).join("") : emptyState(communitySlug ? "Nothing in this community" : "Nothing in this filter", "New documents show up here as Submitted.", adminHref(route, "queue", "submitted"), "Back to submitted"));
     }
-    return '<p class="eyebrow">Reviewers</p><h1>Reviewer queue</h1><p>Check the name and SkyPeak address on the document. Unit numbers stay in the file and off the profile.</p>' + tabs + body;
+    return '<p class="eyebrow">Reviewers</p><h1>Reviewer queue</h1><p>Check the name and community address on each document. The reviewer flag is global, so this queue includes every pilot community. Unit numbers stay in the file and off the profile.</p>' + communityFilter + tabs + body;
   }
 
   function viewNotFound() {
@@ -1114,7 +1245,7 @@
 
   function view(route) {
     if (BBStore.booting && BBStore.booting() && !localPreview()) {
-      return '<p class="eyebrow">SkyPeak @ Bukit Batok</p><h1>BlockBuddy</h1>' + skeletons(3);
+      return '<p class="eyebrow">Pilot communities in Bukit Batok</p><h1>BlockBuddy</h1>' + skeletons(3);
     }
     if (route.name === "home") return viewHome();
     if (route.name === "register") return viewRegister();
@@ -1424,7 +1555,7 @@
     ctx.font = "700 22px sans-serif";
     ctx.fillText("Service address", 48, 500);
     ctx.font = "32px sans-serif";
-    ctx.fillText("SkyPeak @ Bukit Batok", 48, 546);
+    ctx.fillText(placeName(), 48, 546);
     ctx.fillText("#08-112", 48, 594);
     ctx.font = "22px sans-serif";
     ctx.fillStyle = "#3c514a";
@@ -1715,11 +1846,14 @@
       if (!emailOk(regEmail)) errors.email = "Enter a valid email address.";
       if (password.length < 8) errors.password = "Use at least 8 characters.";
       if (password !== confirm) errors.confirm = "Those passwords don’t match.";
-      if (!form.querySelector('[name="resident"]').checked) errors.resident = "Confirm that you live at SkyPeak @ Bukit Batok.";
+      var communitySlug = String(reg.get("community") || "").trim();
+      var chosenCommunity = communityBySlug(communitySlug);
+      if (!chosenCommunity) errors.community = "Choose the community you live in.";
+      if (!form.querySelector('[name="resident"]').checked) errors.resident = chosenCommunity ? "Confirm that you live at " + chosenCommunity.name + "." : "Confirm that you live in the community you selected.";
       if (!form.querySelector('[name="guidelines"]').checked) errors.guidelines = "Agree to the community guidelines to join.";
-      var values = { preferredName: preferredName, email: regEmail, resident: form.querySelector('[name="resident"]').checked ? "on" : "", guidelines: form.querySelector('[name="guidelines"]').checked ? "on" : "" };
+      var values = { preferredName: preferredName, email: regEmail, community: communitySlug, resident: form.querySelector('[name="resident"]').checked ? "on" : "", guidelines: form.querySelector('[name="guidelines"]').checked ? "on" : "" };
       if (Object.keys(errors).length) return showErrors(values, errors);
-      settle(BBStore.register({ preferredName: preferredName, email: regEmail, password: password })).then(function (created) {
+      settle(BBStore.register({ preferredName: preferredName, email: regEmail, password: password, communitySlug: communitySlug })).then(function (created) {
         if (!created.ok) return showErrors(values, { email: created.error });
         docSession = blankDoc();
         if (created.pending) {
@@ -1838,7 +1972,7 @@
     var errors = {};
     if (name.length < 2) errors.preferredName = "Use at least 2 characters.";
     if (BBPrivacy.containsUnitNumber(name) || BBPrivacy.containsUnitNumber(bio)) {
-      errors.bio = "Unit numbers stay off your profile. Neighbours only see that you live at SkyPeak.";
+      errors.bio = "Unit numbers stay off your profile. Neighbours only see that you live at " + placeName() + ".";
     }
     if (Object.keys(errors).length) return showErrors({ preferredName: name, bio: bio }, errors);
     settle(BBStore.updateProfile({ preferredName: name, bio: bio })).then(function (result) {
@@ -1968,7 +2102,7 @@
       ui.reviewer = false;
       ui.confirm = {
         title: "Reset the demo?",
-        body: "This clears accounts, listings, messages, reports and blocks saved in this browser, then restores the SkyPeak sample data.",
+        body: "This clears accounts, listings, messages, reports and blocks saved in this browser, then restores the sample data.",
         confirmLabel: "Reset demo",
         danger: true,
         run: function () {
@@ -2148,7 +2282,7 @@
     if (action === "relist") {
       settle(BBStore.setListingStatus(actionEl.dataset.id, "active")).then(function (result) {
         if (result && result.ok === false) return toast(result.error);
-        toast("Back on the SkyPeak feed.");
+        toast("Back on the " + placeName() + " feed.");
       });
       return;
     }
@@ -2229,6 +2363,21 @@
 
   function onChange(event) {
     var target = event.target;
+    if (target.id === "reg-community") {
+      var picked = communityBySlug(target.value);
+      var residentLabel = document.getElementById("resident-label");
+      if (residentLabel) residentLabel.textContent = "I live at " + (picked ? picked.name : "the community I selected");
+      return;
+    }
+    if (target.id === "admin-community") {
+      var route = parseRoute();
+      var params = new URLSearchParams(route.params);
+      if (target.value) params.set("community", target.value);
+      else params.delete("community");
+      if (!params.get("tab")) params.set("tab", "queue");
+      location.hash = "#/admin?" + params.toString();
+      return;
+    }
     if (target.name === "type") {
       syncTypeFields();
       updatePreview();

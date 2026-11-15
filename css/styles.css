@@ -355,6 +355,10 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   margin: 0 0 0.75rem;
 }
 .check input { margin-top: 0.25rem; flex: 0 0 auto; }
+.check span { flex: 1; min-width: 0; }
+.community-filter { max-width: 28rem; }
+.pilot-list { margin: 0.35rem 0 0; padding-left: 1.15rem; }
+.pilot-list li { margin: 0.15rem 0; }
 
 .btn {
   display: inline-flex;

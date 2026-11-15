@@ -15,6 +15,14 @@
   root.BBConfig = {
     url: "https://kilwaieocbvikzxqyavk.supabase.co",
     key: "sb_publishable_NySaXzCXd_MZX0J90omlEQ_Q7AShzAQ",
-    siteUrl: siteUrl
+    siteUrl: siteUrl,
+    communities: [
+      { name: "SkyPeak @ Bukit Batok", slug: "skypeak-bukit-batok", residentLabel: "SkyPeak @ Bukit Batok resident" },
+      { name: "Golden Daisy", slug: "golden-daisy", residentLabel: "Golden Daisy resident" },
+      { name: "Skyline II @ Bukit Batok", slug: "skyline-ii-bukit-batok", residentLabel: "Skyline II @ Bukit Batok resident" },
+      { name: "Skyline I @ Bukit Batok", slug: "skyline-i-bukit-batok", residentLabel: "Skyline I @ Bukit Batok resident" },
+      { name: "Sky Vista @ Bukit Batok", slug: "sky-vista-bukit-batok", residentLabel: "Sky Vista @ Bukit Batok resident" },
+      { name: "West Terra @ Bukit Batok", slug: "west-terra-bukit-batok", residentLabel: "West Terra @ Bukit Batok resident" }
+    ]
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -195,17 +195,42 @@
     save();
   }
 
+  function communities() {
+    var list = (root.BBConfig && root.BBConfig.communities) || [];
+    return list.map(function (row) {
+      return {
+        id: row.slug === "skypeak-bukit-batok" ? data.community.id : row.slug,
+        name: row.name,
+        slug: row.slug,
+        residentLabel: row.residentLabel || (row.name + " resident")
+      };
+    });
+  }
+
+  function communityBySlug(slug) {
+    var found = null;
+    communities().forEach(function (row) {
+      if (row.slug === slug) found = row;
+    });
+    return found;
+  }
+
   function register(input) {
     var email = String(input.email || "").trim().toLowerCase();
     var exists = state.users.some(function (u) { return u.email.toLowerCase() === email; });
     if (exists) return { ok: false, error: "An account with that email already exists." };
+    var chosen = communityBySlug(String(input.communitySlug || "").trim());
+    if (!chosen) return { ok: false, error: "Choose the community you live in." };
     var user = {
       id: uid("u_"),
       preferredName: String(input.preferredName || "").trim(),
       email: email,
       password: input.password,
       bio: "",
-      communityId: data.community.id,
+      communityId: chosen.id,
+      communityName: chosen.name,
+      residentLabel: chosen.residentLabel,
+      communitySlug: chosen.slug,
       createdAt: Date.now(),
       verification: blankVerification("none")
     };
@@ -227,7 +252,10 @@
       user.verification.submittedAt = user.verification.submittedAt || now;
     }
     if (status === "verified") user.verification.verifiedAt = now;
-    if (status === "action_needed") user.verification.actionReason = data.actionReason;
+    if (status === "action_needed") {
+      var place = user.communityName || (data.community && data.community.name) || "your community";
+      user.verification.actionReason = "We could not confirm the " + place + " address. Please upload a clearer photo of a recent bill or letter. Cover account numbers and other financial details, and leave your name and address visible.";
+    }
     if (status !== "action_needed") user.verification.actionReason = "";
     user.verification.events = (user.verification.events || []).concat([{ status: status, at: now }]).slice(-8);
     save();
@@ -322,11 +350,12 @@
 
   function visibleListings(filters) {
     var me = sessionUser();
+    var homeId = me && me.communityId ? me.communityId : data.community.id;
     var f = filters || {};
     var q = String(f.q || "").trim().toLowerCase();
     return state.listings
       .filter(function (listing) {
-        if (listing.communityId !== data.community.id) return false;
+        if (listing.communityId !== homeId) return false;
         if (listing.status !== "active" && !f.includeClosed) return false;
         if (me && isBlocked(me.id, listing.ownerId)) return false;
         if (f.ownerId && listing.ownerId !== f.ownerId) return false;
@@ -368,7 +397,7 @@
     var listing = existing || {
       id: uid("l_"),
       ownerId: me.id,
-      communityId: data.community.id,
+      communityId: me.communityId || data.community.id,
       createdAt: Date.now(),
       status: "active",
       art: input.art || "other",
@@ -537,6 +566,7 @@
     auditLog: function () { return []; },
     state: function () { return state; },
     save: save,
+    communities: communities,
     sessionUser: sessionUser,
     userById: userById,
     signIn: signIn,

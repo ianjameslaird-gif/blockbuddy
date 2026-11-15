@@ -19,6 +19,7 @@
     adminSubmissions: [],
     adminReports: [],
     audit: [],
+    communities: [],
     photoUrls: {},
     channel: null
   };
@@ -76,12 +77,59 @@
     return user;
   }
 
-  function mapProfile(row, email) {
+  function sortCommunities(rows) {
+    return rows.slice().sort(function (a, b) {
+      if (a.slug === "skypeak-bukit-batok") return -1;
+      if (b.slug === "skypeak-bukit-batok") return 1;
+      return String(a.name).localeCompare(String(b.name));
+    });
+  }
+
+  function fallbackCommunities() {
+    var list = (root.BBConfig && root.BBConfig.communities) || [];
+    return sortCommunities(list.map(function (row) {
+      return {
+        id: row.id || "",
+        name: row.name,
+        slug: row.slug,
+        residentLabel: row.residentLabel || (row.name + " resident")
+      };
+    }));
+  }
+
+  function loadCommunities() {
+    var fallback = fallbackCommunities();
+    if (!client()) {
+      cache.communities = fallback;
+      return Promise.resolve(cache.communities);
+    }
+    return client().from("communities").select("id, name, slug, resident_label").then(function (res) {
+      if (res.error || !res.data || !res.data.length) {
+        cache.communities = fallback;
+        return cache.communities;
+      }
+      cache.communities = sortCommunities(res.data.map(function (row) {
+        return {
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          residentLabel: row.resident_label || (row.name + " resident")
+        };
+      }));
+      return cache.communities;
+    }).catch(function () {
+      cache.communities = fallback;
+      return cache.communities;
+    });
+  }
+
+  function mapProfile(row, email, own) {
     if (!row) return null;
     var priv = row.profile_private;
     if (Array.isArray(priv)) priv = priv[0] || null;
     var community = row.communities || {};
     if (Array.isArray(community)) community = community[0] || {};
+    var previous = cache.users[row.id] || null;
     var status = row.verification_status === "not_submitted" ? "none" : row.verification_status;
     var user = {
       id: row.id,
@@ -104,12 +152,22 @@
         events: []
       }
     };
-    if (community && community.name && root.BBData) {
+    if (community && community.name) {
+      user.communityName = community.name;
+      user.residentLabel = community.resident_label || community.name + " resident";
+      user.communitySlug = community.slug || "";
+    } else if (previous) {
+      user.communityName = previous.communityName || "";
+      user.residentLabel = previous.residentLabel || "";
+      user.communitySlug = previous.communitySlug || "";
+    }
+    if (own && user.communityName && root.BBData) {
       root.BBData.community = {
         id: row.community_id,
-        name: community.name,
-        residentLabel: community.resident_label || community.name + " resident",
-        slug: community.slug || ""
+        name: user.communityName,
+        residentLabel: user.residentLabel,
+        slug: user.communitySlug || "",
+        pilot: root.BBData.community && root.BBData.community.pilot
       };
     }
     return remember(user);
@@ -175,7 +233,7 @@
         return;
       }
       cache.error = "";
-      cache.user = mapProfile(res.data, session.user.email || "");
+      cache.user = mapProfile(res.data, session.user.email || "", true);
     });
   }
 
@@ -232,27 +290,24 @@
     }
     root.BBAuthHandler = handleAuth;
     var queued = root.BBAuthQueue ? root.BBAuthQueue.splice(0) : [];
-    if (queued.length) {
-      queued.forEach(function (item) { handleAuth(item.event, item.session); });
-      return Promise.resolve();
-    }
-    return client().auth.getSession().then(function (res) {
-      if (res.error) {
-        cache.error = friendly(res.error);
-        cache.booting = false;
-        cache.ready = true;
-        return;
-      }
-      var session = res.data.session;
-      var step = session ? loadProfile(session) : Promise.resolve();
-      return step.then(function () {
-        cache.booting = false;
-        cache.ready = true;
-      });
-    }).catch(function () {
+    var finish = function () {
       cache.booting = false;
       cache.ready = true;
+    };
+    if (queued.length) {
+      return loadCommunities().then(function () {
+        queued.forEach(function (item) { handleAuth(item.event, item.session); });
+        finish();
+      });
+    }
+    return client().auth.getSession().then(function (res) {
+      if (res.error) cache.error = friendly(res.error);
+      var session = !res.error && res.data ? res.data.session : null;
+      var step = session ? loadProfile(session) : Promise.resolve();
+      return step.then(loadCommunities).then(finish);
+    }).catch(function () {
       cache.error = "BlockBuddy couldn’t reach the sign-in service.";
+      return loadCommunities().then(finish);
     });
   }
 
@@ -454,11 +509,24 @@
     if (name === "admin") {
       if (!cache.user.isAdmin) return Promise.resolve();
       var status = (route.params.get("status") || "submitted");
-      return Promise.all([
-        client().from("verification_submissions").select("id, user_id, status, file_name, submitted_at, reviewer_note, document_deleted_at, storage_path, member:profiles!verification_submissions_user_id_fkey(display_name)").eq("status", status).order("submitted_at", { ascending: true }),
-        client().from("reports").select("id, reporter_id, target_type, target_id, target_label, reason, details, status, created_at, reporter:profiles!reports_reporter_id_fkey(display_name)").eq("status", "open").order("created_at", { ascending: true }),
-        client().from("audit_log").select("id, action, target_type, target_id, created_at, admin:profiles!audit_log_admin_id_fkey(display_name)").order("created_at", { ascending: false }).limit(40)
-      ]).then(function (parts) {
+      var wanted = route.params.get("community") || "";
+      return loadCommunities().then(function (rows) {
+        var match = null;
+        (rows || []).forEach(function (row) {
+          if (row.slug === wanted) match = row;
+        });
+        var submissions = client().from("verification_submissions").select("id, user_id, community_id, status, file_name, submitted_at, reviewer_note, document_deleted_at, storage_path, member:profiles!verification_submissions_user_id_fkey(display_name)").eq("status", status).order("submitted_at", { ascending: true });
+        var reports = client().from("reports").select("id, reporter_id, community_id, target_type, target_id, target_label, reason, details, status, created_at, reporter:profiles!reports_reporter_id_fkey(display_name)").eq("status", "open").order("created_at", { ascending: true });
+        if (match && match.id) {
+          submissions = submissions.eq("community_id", match.id);
+          reports = reports.eq("community_id", match.id);
+        }
+        return Promise.all([
+          submissions,
+          reports,
+          client().from("audit_log").select("id, action, target_type, target_id, created_at, admin:profiles!audit_log_admin_id_fkey(display_name)").order("created_at", { ascending: false }).limit(40)
+        ]);
+      }).then(function (parts) {
         parts.forEach(function (part) { if (part.error) throw part.error; });
         cache.adminSubmissions = parts[0].data || [];
         cache.adminReports = parts[1].data || [];
@@ -481,11 +549,16 @@
 
   function register(input) {
     if (!client()) return Promise.resolve({ ok: false, error: "Registration is not available." });
+    var slug = String(input.communitySlug || "").trim();
+    if (!slug) return Promise.resolve({ ok: false, error: "Choose the community you live in." });
     return client().auth.signUp({
       email: input.email,
       password: input.password,
       options: {
-        data: { display_name: input.preferredName },
+        data: {
+          display_name: input.preferredName,
+          community_slug: slug
+        },
         emailRedirectTo: root.BBConfig.siteUrl()
       }
     }).then(function (res) {
@@ -793,6 +866,7 @@
     booting: function () { return cache.booting; },
     prepare: prepare,
     error: function () { return cache.error; },
+    communities: function () { return cache.communities || []; },
     sessionUser: function () { return cache.user; },
     userById: function (id) { return cache.users[id] || null; },
     listingPrice: listingPrice,

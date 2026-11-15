@@ -34,6 +34,10 @@ run_sql < "$root/supabase/migrations/20261115140000_schema.sql" >/dev/null
 run_sql < "$root/supabase/migrations/20261115140100_storage.sql" >/dev/null
 run_sql < "$root/supabase/migrations/20261115140000_schema.sql" >/dev/null
 run_sql < "$root/supabase/migrations/20261115140100_storage.sql" >/dev/null
+run_sql < "$root/supabase/migrations/20261115150000_more_communities.sql" >/dev/null
+run_sql < "$root/supabase/migrations/20261115160000_communities_anon_select.sql" >/dev/null
+run_sql < "$root/supabase/migrations/20261115150000_more_communities.sql" >/dev/null
+run_sql < "$root/supabase/migrations/20261115160000_communities_anon_select.sql" >/dev/null
 run_sql < "$root/supabase/tests/rls_smoke.sql"
 
 if command -v docker >/dev/null 2>&1; then

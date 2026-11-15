@@ -363,6 +363,6 @@
         readHoursAgo: { u_alex: 1, u_siti: 47 }
       }
     ],
-    actionReason: "We could not confirm the SkyPeak address. Please upload a clearer photo of a recent bill or letter. Cover account numbers and other financial details, and leave your name and address visible."
+    actionReason: "We could not confirm the address for your community. Please upload a clearer photo of a recent bill or letter. Cover account numbers and other financial details, and leave your name and address visible."
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

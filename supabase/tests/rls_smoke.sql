@@ -16,7 +16,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
   (:'mei', 'mei@skypeak.example', '{"display_name":"Mei Lin"}'),
   (:'newbie', 'newbie@skypeak.example', '{"display_name":"#12-345"}'),
   (:'admin', 'admin@skypeak.example', '{"display_name":"Reviewer"}'),
-  (:'farah', 'farah@example.com', '{"display_name":"Farah"}');
+  (:'farah', 'farah@example.com', '{"display_name":"Farah"}'),
+  ('77777777-7777-4777-8777-777777777777', 'daisy@example.com', '{"display_name":"Daisy","community_slug":"golden-daisy"}');
 
 insert into public.communities (id, name, slug, resident_label)
 values (:'other', 'Other Block', 'other-block', 'Other Block resident');
@@ -35,10 +36,17 @@ where user_id = :'admin';
 commit;
 
 -- A rejected display name must not become the profile name.
+-- A known community_slug at sign-up chooses that community. Missing slugs stay on SkyPeak.
 do $$
 begin
   if (select display_name from public.profiles where id = '33333333-3333-4333-8333-333333333333') <> 'Neighbour' then
     raise exception 'unit number in the sign-up name was stored';
+  end if;
+  if (select c.slug from public.profiles p join public.communities c on c.id = p.community_id where p.id = '11111111-1111-4111-8111-111111111111') <> 'skypeak-bukit-batok' then
+    raise exception 'sign-up without community_slug left SkyPeak';
+  end if;
+  if (select c.slug from public.profiles p join public.communities c on c.id = p.community_id where p.id = '77777777-7777-4777-8777-777777777777') <> 'golden-daisy' then
+    raise exception 'sign-up community_slug was ignored';
   end if;
 end $$;
 
@@ -70,7 +78,7 @@ declare
   rel text;
 begin
   foreach rel in array array[
-    'communities', 'profiles', 'profile_private', 'verification_submissions',
+    'profiles', 'profile_private', 'verification_submissions',
     'listings', 'blocks', 'conversations', 'messages', 'conversation_reads',
     'reports', 'audit_log'
   ]
@@ -82,7 +90,35 @@ begin
       raise exception 'anon can access %', rel;
     end if;
   end loop;
+
+  if not has_table_privilege('anon', 'public.communities', 'SELECT') then
+    raise exception 'anon should be able to read communities';
+  end if;
+  if has_table_privilege('anon', 'public.communities', 'INSERT')
+     or has_table_privilege('anon', 'public.communities', 'UPDATE')
+     or has_table_privilege('anon', 'public.communities', 'DELETE') then
+    raise exception 'anon can write communities';
+  end if;
 end $$;
+
+set role anon;
+do $$
+declare
+  n int;
+begin
+  select count(*) into n from public.communities where slug <> '';
+  if n < 6 then
+    raise exception 'anon should see the pilot communities, saw %', n;
+  end if;
+  begin
+    perform 1 from public.profiles limit 1;
+    raise exception 'anon read profiles';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+end $$;
+reset role;
 
 do $$
 begin
