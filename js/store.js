@@ -517,9 +517,24 @@
     return state.reports.filter(function (r) { return r.reporterId === me.id; });
   }
 
-  root.BBStore = {
+  function ownListings() {
+    var me = sessionUser();
+    if (!me) return [];
+    return state.listings.filter(function (listing) {
+      return listing.ownerId === me.id;
+    }).sort(function (a, b) { return b.createdAt - a.createdAt; });
+  }
+
+  root.BBDemoStore = {
     init: init,
     reset: reset,
+    booting: function () { return false; },
+    prepare: function () { return Promise.resolve(); },
+    ownListings: ownListings,
+    mySubmissions: function () { return []; },
+    adminSubmissions: function () { return []; },
+    adminReports: function () { return []; },
+    auditLog: function () { return []; },
     state: function () { return state; },
     save: save,
     sessionUser: sessionUser,
@@ -527,6 +542,13 @@
     signIn: signIn,
     signInDemo: signInDemo,
     signOut: signOut,
+    requestReset: function () { return { ok: true }; },
+    updatePassword: function () { return { ok: true }; },
+    adminReview: function () { return { ok: false, error: "Reviewer tools change the status in this demo." }; },
+    adminOpen: function () { return Promise.resolve({ ok: false, error: "Documents are not uploaded in the demo." }); },
+    adminResolve: function () { return { ok: false }; },
+    adminHide: function () { return { ok: false }; },
+    ownDocumentUrl: function () { return Promise.resolve(""); },
     register: register,
     setVerificationStatus: setVerificationStatus,
     saveDraft: saveDraft,

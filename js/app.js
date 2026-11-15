@@ -148,10 +148,20 @@
 
   function safeImg(url) {
     if (typeof url !== "string" || !url) return "";
-    var ok = url.indexOf("data:image/jpeg") === 0 || url.indexOf("data:image/png") === 0 || url.indexOf("data:image/webp") === 0 || url.indexOf("data:image/gif") === 0;
-    if (!ok) return "";
-    if (/[<>"'\s]/.test(url)) return "";
-    return url;
+    var data = url.indexOf("data:image/jpeg") === 0 || url.indexOf("data:image/png") === 0 || url.indexOf("data:image/webp") === 0 || url.indexOf("data:image/gif") === 0;
+    if (data) {
+      if (/[<>"'\s]/.test(url)) return "";
+      return url;
+    }
+    try {
+      var parsed = new URL(url);
+      if (parsed.protocol !== "https:") return "";
+      if (parsed.host !== "kilwaieocbvikzxqyavk.supabase.co") return "";
+      if (parsed.pathname.indexOf("/storage/v1/object/sign/") !== 0) return "";
+      return parsed.href;
+    } catch (err) {
+      return "";
+    }
   }
 
   function avatar(name, large) {
@@ -184,6 +194,9 @@
     else if (parts[0] === "profile") name = "profile";
     else if (parts[0] === "member" && parts[1]) { name = "member"; id = parts[1]; }
     else if (parts[0] === "help") name = "help";
+    else if (parts[0] === "forgot") name = "forgot";
+    else if (parts[0] === "update-password") name = "update-password";
+    else if (parts[0] === "admin") name = "admin";
     return { name: name, id: id, params: params };
   }
 
@@ -197,6 +210,48 @@
 
   function verified(user) {
     return !!(user && user.verification && user.verification.status === "verified");
+  }
+
+  function localPreview() {
+    var host = location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return "";
+    return new URLSearchParams(location.search).get("preview") || "";
+  }
+
+  function previewUser() {
+    return {
+      id: "preview",
+      preferredName: "Preview Neighbour",
+      email: "preview@example.com",
+      bio: "",
+      communityId: "preview",
+      createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
+      isAdmin: localPreview() === "admin",
+      verification: {
+        status: "none",
+        updatedAt: Date.now(),
+        submittedAt: null,
+        verifiedAt: null,
+        fileName: "",
+        previewDataUrl: "",
+        draftDataUrl: "",
+        draftName: "",
+        actionReason: "",
+        events: []
+      }
+    };
+  }
+
+  function activeUser() {
+    var user = BBStore.sessionUser();
+    if (user) return user;
+    var preview = localPreview();
+    if (preview === "verify" || preview === "admin") return previewUser();
+    return null;
+  }
+
+  function settle(value) {
+    return Promise.resolve(value);
   }
 
   function announce(text) {
@@ -271,7 +326,7 @@
   }
 
   function footer() {
-    return '<footer class="site-foot"><p>BlockBuddy · Good finds, right around the block.</p><p>SkyPeak @ Bukit Batok pilot. <a href="docs/index.html">What a real launch needs</a></p></footer>';
+    return '<footer class="site-foot"><p>BlockBuddy · Good finds, right around the block.</p><p>SkyPeak @ Bukit Batok pilot. <a href="docs/index.html">How BlockBuddy works</a></p></footer>';
   }
 
   function gate(kind, user) {
@@ -289,7 +344,7 @@
   }
 
   function requireUser(needVerified) {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     if (!user) return gate("sign-in");
     if (needVerified && !verified(user)) return gate("verify", user);
     return "";
@@ -311,6 +366,7 @@
       (owner ? '<a href="#/member/' + esc(owner.id) + '">' + esc(owner.preferredName) + "</a>" : "Neighbour") +
       " · " + esc(timeAgo(listing.createdAt)) +
       (listing.status === "taken" ? ' · <span class="badge badge-taken">Taken</span>' : "") +
+      (listing.status === "hidden" ? ' · <span class="badge badge-taken">Hidden</span>' : "") +
       "</p></article>";
   }
 
@@ -375,6 +431,7 @@
   }
 
   function searchQuery(params) {
+    if (!window.BBDemo) return BBStore.visibleListings();
     var filters = {
       q: params.get("q") || "",
       category: params.get("category") || "",
@@ -403,6 +460,7 @@
       item("#/help", "Help and safety", route.name === "help");
       if (verified(user)) item("#/listing/new", "Post a listing", route.name === "edit" && !route.id);
       item("#/verify", "Residence verification", route.name === "verify");
+      if (user.isAdmin) item("#/admin", "Reviewer queue", route.name === "admin");
       items += '<button type="button" role="menuitem" data-action="sign-out">Sign out</button>';
     }
     return '<div id="site-menu" class="menu-panel" role="menu"' + (ui.menu ? "" : " hidden") + ">" + items + "</div>";
@@ -432,13 +490,15 @@
   }
 
   function shell(route, main) {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     var showSearch = verified(user);
     var q = route.name === "search" ? (route.params.get("q") || "") : "";
     var status = user ? statusLabel(user.verification.status) : "Signed out";
-    return '<div class="sticky-head" data-inert-when-dialog>' +
-      '<div class="proto-bar"><p><span>Prototype — demo data only</span><span class="proto-status">Status: ' + esc(status) + "</span></p>" +
-      '<button type="button" data-action="reviewer">Reviewer tools</button></div>' +
+    var proto = window.BBDemo
+      ? '<div class="proto-bar"><p><span>Prototype — demo data only</span><span class="proto-status">Status: ' + esc(status) + "</span></p>" +
+        '<button type="button" data-action="reviewer">Reviewer tools</button></div>'
+      : "";
+    return '<div class="sticky-head" data-inert-when-dialog>' + proto +
       '<header class="topbar' + (showSearch ? "" : " no-search") + '">' +
       '<a class="brand" href="#/">' + BBArt.logo() + '<span class="wordmark">Block<span>Buddy</span></span></a>' +
       (showSearch
@@ -478,7 +538,7 @@
     if (!ui.report) return "";
     if (ui.report.done) {
       return backdrop(
-        '<h2 id="report-title">Report saved</h2><p>It stays on this device. A live BlockBuddy service would send it to moderators. Other neighbours cannot see it.</p><button type="button" class="btn btn-primary" data-action="close-dialog" data-close data-autofocus>Close</button>',
+        '<h2 id="report-title">Report sent</h2><p>' + (window.BBDemo ? "It stays on this device. A live BlockBuddy service would send it to moderators. Other neighbours cannot see it." : "Reviewers in your community can see this report. Other neighbours cannot.") + '</p><button type="button" class="btn btn-primary" data-action="close-dialog" data-close data-autofocus>Close</button>',
         "report-title"
       );
     }
@@ -499,7 +559,7 @@
 
   function reviewerDialog() {
     if (!ui.reviewer) return "";
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     var current = user ? user.verification.status : "none";
     var radios = STATUS_ORDER.map(function (status) {
       return '<label><input type="radio" name="reviewer-status" value="' + status + '"' + (current === status ? " checked" : "") + (user ? "" : " disabled") + "> " + esc(statusLabel(status)) + "</label>";
@@ -522,7 +582,7 @@
   }
 
   function viewHome() {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     var card;
     if (user) {
       var first = user.preferredName.split(" ")[0];
@@ -539,22 +599,53 @@
         '<form data-form="sign-in" data-persist novalidate>' +
         '<div class="field"><label for="sign-email">Email</label><input id="sign-email" name="email" type="email" autocomplete="email" maxlength="80" required value="' + esc(val("email", "")) + '"' + (fieldError("email") ? ' aria-invalid="true"' : "") + describedBy("sign-email", "email") + ">" + errorText("email", "sign-email") + "</div>" +
         '<div class="field"><label for="sign-password">Password</label><div class="password-row"><input id="sign-password" name="password" type="password" autocomplete="current-password" maxlength="80" required' + (fieldError("password") ? ' aria-invalid="true"' : "") + describedBy("sign-password", "password") + '><button type="button" class="btn btn-secondary btn-small" data-action="toggle-password" aria-controls="sign-password" aria-pressed="false">Show</button></div>' + errorText("password", "sign-password") + "</div>" +
-        '<div class="stack-actions"><button class="btn btn-primary" type="submit">Sign in</button><a class="btn btn-ghost" href="#/register">Create an account</a></div></form>' +
-        '<div class="demo-box"><p><strong>Demo neighbour.</strong> Email <code>' + esc(BBData.demo.email) + "</code> · password <code>" + esc(BBData.demo.password) + "</code></p>" +
-        '<button type="button" class="btn btn-secondary" data-action="sign-in-demo">Continue as Alex</button></div></section>';
+        '<div class="stack-actions"><button class="btn btn-primary" type="submit">Sign in</button><a class="btn btn-ghost" href="#/register">Create an account</a></div>' +
+        '<p class="hint"><a href="#/forgot">Forgot your password?</a></p></form>' +
+        (window.BBDemo
+          ? '<div class="demo-box"><p><strong>Demo neighbour.</strong> Email <code>' + esc(BBData.demo.email) + "</code> · password <code>" + esc(BBData.demo.password) + "</code></p>" +
+            '<button type="button" class="btn btn-secondary" data-action="sign-in-demo">Continue as Alex</button></div>'
+          : "") +
+        (BBStore.error && BBStore.error() ? '<p class="field-error" role="alert">' + esc(BBStore.error()) + "</p>" : "") +
+        "</section>";
     }
     return '<div class="hero"><div class="hero-copy"><p class="eyebrow">SkyPeak @ Bukit Batok</p><h1>Good finds, right around the block.</h1>' +
       '<p class="lead">A neighbourly marketplace for one HDB block. Buy, sell, give away or trade with people who actually live here. More communities can join after this pilot.</p></div>' +
       card +
       '<div class="hero-aside">' + BBArt.hero() +
       '<ul class="trust"><li><h2>Verified residents</h2><p>The feed opens after a residence check.</p></li>' +
-      "<li><h2>Private documents</h2><p>Proof of address is for reviewers only. In this demo it never leaves the browser.</p></li>" +
+      "<li><h2>Private documents</h2><p>Proof of address is stored privately for reviewers and deleted " + BBData.retentionDays + " days after a decision.</p></li>" +
       "<li><h2>No unit numbers</h2><p>Profiles show “SkyPeak @ Bukit Batok resident”, not a door number.</p></li></ul></div></div>";
   }
 
+  function viewForgot() {
+    if (activeUser()) {
+      return '<section class="banner banner-info"><h1>You’re signed in</h1><p>You can set a new password from your account.</p><a class="btn btn-primary" href="#/update-password">Change password</a></section>';
+    }
+    return '<section class="panel"><p class="eyebrow">Password reset</p><h1>Email a reset link</h1>' +
+      "<p>We’ll send a link that brings you back to this site. It expires, and the free mailer only sends a few each hour.</p>" +
+      (ui.pendingEmail ? '<div class="banner banner-ok" role="status"><h2>Check your inbox</h2><p>If an account uses that email, a reset link is on its way. Open it on this device.</p></div>' : "") +
+      formAlert(ui.fieldErrors) +
+      '<form data-form="forgot" data-persist novalidate>' +
+      '<div class="field"><label for="forgot-email">Email</label><input id="forgot-email" name="email" type="email" autocomplete="email" maxlength="80" required value="' + esc(val("email", "")) + '"' + (fieldError("email") ? ' aria-invalid="true"' : "") + ">" + errorText("email", "forgot-email") + "</div>" +
+      '<div class="stack-actions"><button class="btn btn-primary" type="submit">Send reset link</button><a class="btn btn-ghost" href="#/">Back to sign in</a></div></form></section>';
+  }
+
+  function viewUpdatePassword() {
+    return '<section class="panel"><p class="eyebrow">Password</p><h1>Choose a new password</h1>' +
+      (ui.pendingEmail ? '<div class="banner banner-ok" role="status"><h2>Password updated</h2><p>You can go back to the marketplace with the new password.</p></div>' : "") +
+      formAlert(ui.fieldErrors) +
+      '<form data-form="update-password" novalidate>' +
+      '<div class="field"><label for="new-password">New password</label><input id="new-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required' + (fieldError("password") ? ' aria-invalid="true"' : "") + ">" + errorText("password", "new-password") + "</div>" +
+      '<div class="field"><label for="new-confirm">Confirm password</label><input id="new-confirm" name="confirm" type="password" autocomplete="new-password" maxlength="80" required' + (fieldError("confirm") ? ' aria-invalid="true"' : "") + ">" + errorText("confirm", "new-confirm") + "</div>" +
+      '<div class="stack-actions"><button class="btn btn-primary" type="submit">Update password</button><a class="btn btn-ghost" href="#/">Home</a></div></form></section>';
+  }
+
   function viewRegister() {
-    if (BBStore.sessionUser()) {
+    if (activeUser()) {
       return '<section class="banner banner-info"><h1>You already have an account</h1><p>Continue with residence verification, or sign out to register someone else.</p><div class="row-actions"><a class="btn btn-primary" href="#/verify">Verification</a><button type="button" class="btn btn-secondary" data-action="sign-out">Sign out</button></div></section>';
+    }
+    if (ui.pendingEmail && !window.BBDemo) {
+      return '<section class="panel"><p class="eyebrow">Join the pilot</p><h1>Check your email</h1><div class="banner banner-ok" role="status"><h2>Account created</h2><p>Open the confirmation link to finish signing up. The free mailer only sends a few messages an hour, so it can take a minute. Then come back and sign in.</p></div><a class="btn btn-primary" href="#/">Back to sign in</a></section>';
     }
     return '<section class="panel"><p class="eyebrow">Join the pilot</p><h1>Create an account</h1>' +
       "<p>Your public name is a preferred name. Neighbours will not see your email or unit number.</p>" +
@@ -562,7 +653,7 @@
       '<form data-form="register" data-persist novalidate>' +
       '<div class="field"><label for="reg-name">Preferred name</label><input id="reg-name" name="preferredName" autocomplete="name" maxlength="60" required value="' + esc(val("preferredName", "")) + '"' + (fieldError("preferredName") ? ' aria-invalid="true"' : "") + describedBy("reg-name", "preferredName", true) + '><p class="hint" id="reg-name-hint">This is the name on your profile. Not your unit number.</p>' + errorText("preferredName", "reg-name") + "</div>" +
       '<div class="field"><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" autocomplete="email" maxlength="80" required value="' + esc(val("email", "")) + '"' + (fieldError("email") ? ' aria-invalid="true"' : "") + ">" + errorText("email", "reg-email") + "</div>" +
-      '<div class="field"><label for="reg-password">Password</label><div class="password-row"><input id="reg-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required' + (fieldError("password") ? ' aria-invalid="true"' : "") + describedBy("reg-password", "password", true) + '><button type="button" class="btn btn-secondary btn-small" data-action="toggle-password" aria-controls="reg-password" aria-pressed="false">Show</button></div><p class="hint" id="reg-password-hint">At least 8 characters. This demo stores it only on your device.</p>' + errorText("password", "reg-password") + "</div>" +
+      '<div class="field"><label for="reg-password">Password</label><div class="password-row"><input id="reg-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="80" required' + (fieldError("password") ? ' aria-invalid="true"' : "") + describedBy("reg-password", "password", true) + '><button type="button" class="btn btn-secondary btn-small" data-action="toggle-password" aria-controls="reg-password" aria-pressed="false">Show</button></div><p class="hint" id="reg-password-hint">At least 8 characters. ' + (window.BBDemo ? "This demo stores it only on your device." : "Supabase stores a hash, not the password itself.") + "</p>" + errorText("password", "reg-password") + "</div>" +
       '<div class="field"><label for="reg-confirm">Confirm password</label><input id="reg-confirm" name="confirm" type="password" autocomplete="new-password" maxlength="80" required' + (fieldError("confirm") ? ' aria-invalid="true"' : "") + ">" + errorText("confirm", "reg-confirm") + "</div>" +
       '<div class="field"><p id="community-label">Community</p><p class="readonly" aria-labelledby="community-label">SkyPeak @ Bukit Batok</p><p class="hint">This pilot is one block. The service is shaped so more HDB communities can be added later.</p></div>' +
       '<label class="check"><input type="checkbox" name="resident"' + (val("resident") === "on" ? " checked" : "") + "> I live at SkyPeak @ Bukit Batok</label>" +
@@ -577,7 +668,7 @@
   function viewVerify(route) {
     var blocked = requireUser(false);
     if (blocked) return blocked;
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     syncDoc(user);
     var v = user.verification;
     var status = v.status;
@@ -597,13 +688,19 @@
       } else if (status !== "verified") {
         html += '<p class="hint">No document preview is stored yet. Reviewer tools can still move the status so each screen can be checked.</p>';
       }
-      html += '<p class="hint">Need another status? Use Reviewer tools in the top bar.</p>';
+      if (!window.BBDemo) html += submissionList();
+      if (ui.docFor === "own" && safeImg(ui.docUrl)) {
+        html += '<figure class="panel"><figcaption>The redacted file you sent. The link expires in a minute.</figcaption><img class="doc-preview" alt="Redacted document" src="' + safeImg(ui.docUrl) + '"></figure>';
+      }
+      if (window.BBDemo) html += '<p class="hint">Need another status? Use Reviewer tools in the top bar.</p>';
     }
     if (status === "none" || status === "action_needed") html += uploadForm();
     html += '<div class="panel"><h2>What to upload</h2><p>A recent utility bill, town council letter or tenancy letter that shows your name and SkyPeak address.</p>' +
       "<h2>What to cover</h2><p>Cover account numbers, card numbers and other financial details. Leave your name and address visible so a reviewer can match them. Drag a box on the preview, or use Add a cover box.</p>" +
       "<h2>Who can see it</h2><p>Only reviewers. It never appears on your profile, listings or chats. Neighbours see “" + esc(BBData.community.residentLabel) + "”, never your unit number.</p>" +
-      "<h2>How long it is kept</h2><p>In the live service, documents are stored privately and deleted " + BBData.retentionDays + " days after a decision. This prototype keeps the preview in your browser only and does not upload it.</p></div>";
+      "<h2>How long it is kept</h2><p>" + (window.BBDemo
+        ? "In the live service, documents are stored privately and deleted " + BBData.retentionDays + " days after a decision. This demo keeps the preview in your browser only and does not upload it."
+        : "The file is stored in a private bucket. You and reviewers can open it. Other neighbours cannot. It is deleted " + BBData.retentionDays + " days after a decision.") + "</p></div>";
     return html;
   }
 
@@ -619,13 +716,30 @@
     if (status === "under_review") return "A reviewer is checking that your name and SkyPeak address match.";
     if (status === "verified") return "You’re in. You can use the SkyPeak feed, post listings and message neighbours.";
     if (status === "action_needed") return record.actionReason || BBData.actionReason;
-    return "Choose a photo to start. Nothing is sent to a server in this prototype.";
+    return window.BBDemo
+      ? "Choose a photo to start. Nothing is sent to a server in this prototype."
+      : "Choose a photo to start. Redaction is burned into the image on this device before it is uploaded.";
+  }
+
+  function submissionList() {
+    var rows = BBStore.mySubmissions ? BBStore.mySubmissions() : [];
+    if (!rows.length) return "";
+    return '<section class="panel"><h2>Your submissions</h2><ul class="queue">' + rows.map(function (row) {
+      var when = row.submitted_at ? timeAgo(Date.parse(row.submitted_at)) : "";
+      return "<li><strong>" + esc(statusLabel(row.status === "not_submitted" ? "none" : row.status)) + "</strong> · " + esc(row.file_name || "document") + " · " + esc(when) +
+        (row.reviewer_note ? "<br>" + esc(row.reviewer_note) : "") +
+        (row.document_deleted_at ? "<br>The file was deleted after the retention period." : "") +
+        (!row.document_deleted_at && row.storage_path ? ' <button type="button" class="btn btn-secondary btn-small" data-action="view-own-doc" data-path="' + esc(row.storage_path) + '">View file</button>' : "") +
+        "</li>";
+    }).join("") + "</ul></section>";
   }
 
   function uploadForm() {
     var preview = safeImg(docSession.dataUrl);
-    var html = '<section class="panel"><h2>' + (BBStore.sessionUser().verification.status === "action_needed" ? "Send a clearer photo" : "Secure upload") + "</h2>" +
-      "<p>The file is previewed in this browser and is not uploaded. Cover financial details before you submit.</p>" +
+    var html = '<section class="panel"><h2>' + (activeUser().verification.status === "action_needed" ? "Send a clearer photo" : "Secure upload") + "</h2>" +
+      "<p>" + (window.BBDemo
+        ? "The file is previewed in this browser and is not uploaded. Cover financial details before you submit."
+        : "Cover financial details, then submit. The covered image is saved on this device and only that copy is uploaded. PDFs are not accepted, because the redaction has to be part of the picture.") + "</p>" +
       formAlert(ui.fieldErrors);
     if (ui.uploadError) {
       html += '<div class="banner banner-bad" role="alert"><h2>Upload failed</h2><p>' + esc(ui.uploadErrorMessage || "The upload did not go through. Nothing left this browser.") + '</p><button type="button" class="btn btn-primary" data-action="retry-upload">Retry upload</button></div>';
@@ -633,10 +747,11 @@
     html += '<form data-form="verify" novalidate>' +
       '<div class="dropzone"><label for="proof"><strong>Choose a photo</strong></label>' +
       '<input id="proof" name="proof" type="file" accept="image/jpeg,image/png,image/webp,image/gif"' + describedBy("proof", "proof", true) + '>' +
-      '<p class="hint" id="proof-hint">JPG, PNG, WEBP or GIF, up to 8 MB. ' + (docSession.name ? "Selected: " + esc(docSession.name) + "." : "No file selected yet.") + "</p>" +
+      '<p class="hint" id="proof-hint">JPG, PNG, WEBP or GIF, up to 8 MB. PDFs stay on your device. ' + (docSession.name ? "Selected: " + esc(docSession.name) + "." : "No file selected yet.") + "</p>" +
       errorText("proof", "proof") +
       '<div class="row-actions"><button type="button" class="btn btn-secondary" data-action="use-sample">Use a sample bill</button>' +
-      '<button type="button" class="btn btn-ghost" data-action="preview-upload-error">Preview the upload-failed state</button></div></div>';
+      (window.BBDemo ? '<button type="button" class="btn btn-ghost" data-action="preview-upload-error">Preview the upload-failed state</button>' : "") +
+      "</div></div>";
     if (preview) {
       html += '<div class="redact"><canvas id="redact-canvas" aria-label="Document preview. Drag to cover sensitive details."></canvas>' +
         '<p id="redact-help" class="hint">Drag a box over account numbers or other financial details. Leave your name and address visible. With a keyboard, use Add a cover box.</p>' +
@@ -645,16 +760,21 @@
         '<button type="button" class="btn btn-secondary btn-small" data-action="undo-redact">Remove last box</button>' +
         '<button type="button" class="btn btn-ghost btn-small" data-action="clear-redact">Clear boxes</button></div></div>';
     }
-    html += '<p role="status">' + (ui.uploading ? "Uploading. The photo stays in this browser." : "") + "</p>" +
+    html += '<p role="status">' + (ui.uploading ? (window.BBDemo ? "Uploading. The photo stays in this browser." : "Uploading the redacted image.") : "") + "</p>" +
       '<button class="btn btn-primary" id="submit-doc" type="submit"' + (ui.uploading ? " disabled" : "") + ">" + (ui.uploading ? "Uploading…" : "Submit for review") + "</button></form></section>";
     return html;
+  }
+
+  function loadError(title) {
+    if (!ui.feedError || window.BBDemo) return "";
+    return '<section class="banner banner-bad" role="alert"><h1>' + esc(title) + '</h1><p>' + esc(ui.feedErrorMessage || "Try again.") + '</p><button type="button" class="btn btn-primary" data-action="retry-feed">Try again</button></section>';
   }
 
   function viewFeed() {
     var blocked = requireUser(true);
     if (blocked) return blocked;
     if (ui.feedError) {
-      return '<section class="banner banner-bad" role="alert"><h1>We couldn’t load the community feed</h1><p>This is a simulated error so the retry state can be reviewed. Nothing is wrong with your account.</p><button type="button" class="btn btn-primary" data-action="retry-feed">Try again</button></section>';
+      return '<section class="banner banner-bad" role="alert"><h1>We couldn’t load the community feed</h1><p>' + esc(ui.feedErrorMessage || "This is a simulated error so the retry state can be reviewed. Nothing is wrong with your account.") + '</p><button type="button" class="btn btn-primary" data-action="retry-feed">Try again</button></section>';
     }
     if (ui.loading === "feed") {
       return '<header class="page-head"><p class="eyebrow">Your community</p><h1>SkyPeak @ Bukit Batok</h1></header>' + skeletons(4);
@@ -670,6 +790,8 @@
   function viewSearch(route) {
     var blocked = requireUser(true);
     if (blocked) return blocked;
+    var failed = loadError("We couldn’t search the feed");
+    if (failed) return failed;
     var params = route.params;
     var desktop = desktopFilters();
     var results = "";
@@ -697,11 +819,12 @@
   function viewListing(route) {
     var blocked = requireUser(true);
     if (blocked) return blocked;
+    if (ui.loading === "listing") return "<h1>Listing</h1>" + skeletons(1);
     var listing = BBStore.listingById(route.id);
-    if (!listing || listing.communityId !== BBData.community.id) {
+    if (!listing || (window.BBDemo && listing.communityId !== BBData.community.id)) {
       return emptyState("That listing is not available", "It may have been deleted, or it is outside SkyPeak.", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
     }
-    var me = BBStore.sessionUser();
+    var me = activeUser();
     var owner = BBStore.userById(listing.ownerId);
     if (me.id !== listing.ownerId && BBStore.isBlocked(me.id, listing.ownerId)) {
       return '<section class="banner banner-warn"><h1>This listing is hidden</h1><p>You blocked this neighbour, so their items stay out of your feed.</p><button type="button" class="btn btn-secondary" data-action="unblock" data-user="' + esc(listing.ownerId) + '">Unblock</button></section>';
@@ -737,8 +860,9 @@
   function viewEdit(route) {
     var blocked = requireUser(true);
     if (blocked) return blocked;
+    if (ui.loading === "edit") return "<h1>Listing</h1>" + skeletons(2);
     var existing = route.id ? BBStore.listingById(route.id) : null;
-    if (route.id && (!existing || existing.ownerId !== BBStore.sessionUser().id)) {
+    if (route.id && (!existing || existing.ownerId !== activeUser().id)) {
       return emptyState("You can’t edit that listing", "Only the neighbour who posted it can change it.", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
     }
     var type = val("type", existing ? existing.type : "sell");
@@ -782,7 +906,7 @@
   }
 
   function threadList(activeId) {
-    var me = BBStore.sessionUser();
+    var me = activeUser();
     var threads = BBStore.threadsFor(me.id);
     if (!threads.length) {
       return '<div class="thread-list">' + emptyState("No messages yet", "When you message a neighbour about a listing, the conversation shows up here.", "#/feed", "Browse the feed") + "</div>";
@@ -802,6 +926,8 @@
   function viewMessages() {
     var blocked = requireUser(true);
     if (blocked) return blocked;
+    var failed = loadError("We couldn’t load messages");
+    if (failed) return failed;
     if (ui.loading === "messages") {
       return "<h1>Messages</h1>" + skeletons(3);
     }
@@ -814,7 +940,8 @@
   function viewThread(route) {
     var blocked = requireUser(true);
     if (blocked) return blocked;
-    var me = BBStore.sessionUser();
+    if (ui.loading === "thread") return "<h1>Chat</h1>" + skeletons(2);
+    var me = activeUser();
     var thread = BBStore.threadById(route.id);
     if (!thread || thread.participantIds.indexOf(me.id) === -1) {
       return emptyState("That conversation is not available", "It may belong to another account on this device.", "#/messages", "Back to messages").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
@@ -833,12 +960,12 @@
     var composer = paused
       ? '<div class="composer"><p>' + (blockedByMe ? "You blocked this neighbour. Unblock to message again." : "Messaging is paused.") + "</p>" +
         (blockedByMe ? '<button type="button" class="btn btn-secondary" data-action="unblock" data-user="' + esc(otherId) + '">Unblock</button>' : "") + "</div>"
-      : '<form class="composer" data-form="chat" data-thread="' + esc(thread.id) + '"><label class="sr-only" for="chat-body">Message</label><textarea id="chat-body" name="body" maxlength="1000" data-watch="chat" placeholder="Write a message"></textarea><button class="btn btn-primary" type="submit">Send</button></form>' +
+      : '<form class="composer" data-form="chat" data-thread="' + esc(thread.id) + '"><label class="sr-only" for="chat-body">Message</label><textarea id="chat-body" name="body" maxlength="1000" data-watch="chat" placeholder="Write a message">' + esc(ui.chatDraft || "") + '</textarea><button class="btn btn-primary" type="submit">Send</button></form>' +
         '<p id="chat-flag" class="field-error" hidden>Unit numbers stay off chat. Suggest the lobby, letterboxes or void deck instead.</p><p id="chat-error" class="field-error" hidden></p>';
     var pane = '<div class="thread-pane"><div class="chat-head"><a class="btn btn-ghost btn-small chat-back" href="#/messages">Back to messages</a>' +
       "<h1>" + esc(other ? other.preferredName : "Neighbour") + "</h1><p>" + esc(BBData.community.residentLabel) + "</p>" +
       (listing ? '<p><a href="#/listing/' + esc(listing.id) + '">About: ' + esc(listing.title) + "</a></p>" : "") +
-      '<div class="row-actions"><button type="button" class="btn btn-secondary btn-small" data-action="open-report" data-type="message" data-id="' + esc(thread.id) + '" data-label="this conversation">Report</button>' +
+      '<div class="row-actions"><button type="button" class="btn btn-secondary btn-small" data-action="open-report" data-type="member" data-id="' + esc(otherId) + '" data-label="' + esc(other ? other.preferredName : "this neighbour") + '">Report</button>' +
       (blockedByMe
         ? '<button type="button" class="btn btn-ghost btn-small" data-action="unblock" data-user="' + esc(otherId) + '">Unblock</button>'
         : '<button type="button" class="btn btn-ghost btn-small" data-action="ask-block" data-user="' + esc(otherId) + '" data-name="' + esc(other ? other.preferredName : "this neighbour") + '">Block</button>') +
@@ -850,8 +977,8 @@
   function viewProfile() {
     var blocked = requireUser(false);
     if (blocked) return blocked;
-    var user = BBStore.sessionUser();
-    var listings = BBStore.state().listings.filter(function (listing) {
+    var user = activeUser();
+    var listings = BBStore.ownListings ? BBStore.ownListings() : BBStore.state().listings.filter(function (listing) {
       return listing.ownerId === user.id;
     }).sort(function (a, b) { return b.createdAt - a.createdAt; });
     var nameValue = Object.prototype.hasOwnProperty.call(ui.formValues, "preferredName") ? ui.formValues.preferredName : user.preferredName;
@@ -872,7 +999,9 @@
       '<div class="field"><label for="profile-name">Preferred name</label><input id="profile-name" name="preferredName" maxlength="60" required value="' + esc(nameValue) + '"' + (fieldError("preferredName") ? ' aria-invalid="true"' : "") + ">" + errorText("preferredName", "profile-name") + "</div>" +
       '<div class="field"><label for="profile-bio">Short bio</label><textarea id="profile-bio" name="bio" maxlength="240">' + esc(bioValue) + "</textarea><p class=\"hint\">Skip door numbers. A hobby or the kind of things you pass on is plenty.</p>" + errorText("bio", "profile-bio") + "</div>" +
       '<p class="hint">Sign-in email, only you see this: ' + esc(user.email) + "</p>" +
-      '<button class="btn btn-primary" type="submit">Save profile</button></form></section>' +
+      '<div class="row-actions"><button class="btn btn-primary" type="submit">Save profile</button>' +
+      (window.BBDemo ? "" : '<a class="btn btn-secondary" href="#/update-password">Change password</a>') +
+      "</div></form></section>" +
       "<h2>Your listings</h2>" +
       (listings.length ? '<div class="grid-cards">' + listings.map(listingCard).join("") + "</div>" : emptyState("You have not posted yet", "Sell, give away, trade or ask for something your flat does not need.", "#/listing/new", "Post a listing")) +
       "<h2>Blocked neighbours</h2>" + blockHtml;
@@ -881,7 +1010,7 @@
   function viewMember(route) {
     var blocked = requireUser(true);
     if (blocked) return blocked;
-    var me = BBStore.sessionUser();
+    var me = activeUser();
     if (route.id === me.id) return viewProfile();
     var person = BBStore.userById(route.id);
     if (!person) return emptyState("Neighbour not found", "That profile is not part of the SkyPeak demo.", "#/feed", "Back to the feed").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
@@ -899,7 +1028,7 @@
   }
 
   function viewHelp() {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     var reports = user ? BBStore.myReports() : [];
     var reportForm = !user
       ? '<p><a class="btn btn-secondary" href="#/">Sign in to file a report</a></p>'
@@ -907,19 +1036,76 @@
         '<form data-form="report-help" data-persist novalidate>' +
         '<div class="field"><label for="help-reason">Reason</label><select id="help-reason" name="reason">' + optionList(REPORT_REASONS, val("reason", ""), "Choose a reason") + "</select>" + errorText("reason", "help-reason") + "</div>" +
         '<div class="field"><label for="help-details">What happened</label><textarea id="help-details" name="details" maxlength="800">' + esc(val("details", "")) + "</textarea>" + errorText("details", "help-details") + "</div>" +
-        '<button class="btn btn-primary" type="submit">Save report on this device</button></form>' +
+        '<button class="btn btn-primary" type="submit">' + (window.BBDemo ? "Save report on this device" : "Send report") + "</button></form>" +
         (reports.length
-          ? "<h3>Reports on this device</h3><ul>" + reports.map(function (report) {
+          ? "<h3>" + (window.BBDemo ? "Reports on this device" : "Reports you sent") + "</h3><ul>" + reports.map(function (report) {
             return "<li><strong>" + esc(report.reason) + "</strong> — " + esc(report.targetLabel || "General") + " · " + esc(timeAgo(report.createdAt)) + "</li>";
           }).join("") + "</ul>"
           : "<p>No reports saved on this device yet.</p>");
     return '<p class="eyebrow">Help and safety</p><h1>Keep it neighbourly</h1>' +
       '<nav class="help-nav" aria-label="On this page"><a href="#/help" data-action="jump" data-target="safety-how">How it works</a><a href="#/help" data-action="jump" data-target="safety-verify">Verification</a><a href="#/help" data-action="jump" data-target="safety-meet">Meeting</a><a href="#/help" data-action="jump" data-target="safety-report">Reporting</a><a href="#/help" data-action="jump" data-target="safety-block">Blocking</a></nav>' +
       '<div class="prose"><section id="safety-how"><h2>How BlockBuddy works</h2><p>Create an account, confirm you live at SkyPeak, then use the feed. You can sell, give something away, trade or post something you want. Message the neighbour in private.</p></section>' +
-      '<section id="safety-verify"><h2>Verification and privacy</h2><p>Reviewers need your name and SkyPeak address. They do not need account numbers. Documents are private. Neighbours only see “' + esc(BBData.community.residentLabel) + '”.</p><p>A live service would delete documents ' + BBData.retentionDays + ' days after a decision. Here, the preview stays in your browser. <a href="docs/index.html">What a real launch needs</a>.</p></section>' +
+      '<section id="safety-verify"><h2>Verification and privacy</h2><p>Reviewers need your name and SkyPeak address. They do not need account numbers. Documents are private. Neighbours only see “' + esc(BBData.community.residentLabel) + '”.</p><p>' + (window.BBDemo ? "A live service would delete documents " + BBData.retentionDays + " days after a decision. Here, the preview stays in your browser." : "Documents are deleted " + BBData.retentionDays + " days after a decision.") + ' <a href="docs/index.html">How BlockBuddy works</a>.</p></section>' +
       "<section id=\"safety-meet\"><h2>Meeting safely</h2><ul><li>Meet at the void deck, lobby, letterboxes or a nearby mall.</li><li>Tell someone when you are heading down.</li><li>Look at the item before you pay, and pay in person.</li><li>If something feels wrong, leave.</li><li>Don’t put your unit number, NRIC or documents in a listing or chat. Patterns like #12-345 are blocked.</li></ul></section>" +
-      '<section id="safety-report"><h2>Reporting</h2><p>Report a listing, a conversation or a neighbour from that screen, or send a general note here. In this prototype the report stays on your device.</p>' + reportForm + "</section>" +
-      '<section id="safety-block"><h2>Blocking</h2><p>Blocking hides that neighbour’s listings and pauses chat. They are not notified in this prototype. You can unblock from your profile.</p><p><a href="#/profile">Open your profile</a></p></section></div>';
+      '<section id="safety-report"><h2>Reporting</h2><p>Report a listing or a neighbour from that screen, or send a general note here. ' + (window.BBDemo ? "In this demo the report stays on your device." : "Reviewers can see it. Other neighbours cannot.") + "</p>" + reportForm + "</section>" +
+      '<section id="safety-block"><h2>Blocking</h2><p>Blocking hides that neighbour’s listings and messages in both directions. They are not notified. You can unblock from your profile.</p><p><a href="#/profile">Open your profile</a></p></section></div>';
+  }
+
+  function adminStatusLinks(current) {
+    var statuses = ["submitted", "under_review", "action_needed", "verified"];
+    return '<div class="quick" aria-label="Submission filters">' + statuses.map(function (status) {
+      var on = current === status;
+      return '<a href="#/admin?tab=queue&status=' + status + '"' + (on ? ' aria-current="page"' : "") + ">" + esc(statusLabel(status)) + "</a>";
+    }).join("") + "</div>";
+  }
+
+  function viewAdmin(route) {
+    var user = activeUser();
+    if (!user) return gate("sign-in");
+    if (!user.isAdmin) {
+      return emptyState("This page is for reviewers", "Verification status is changed by an admin, not from your own account.", "#/", "Back home").replace("<h2>", "<h1>").replace("</h2>", "</h1>");
+    }
+    if (ui.feedError) {
+      return '<section class="banner banner-bad" role="alert"><h1>The queue didn’t load</h1><p>' + esc(ui.feedErrorMessage || "Try again.") + '</p><button type="button" class="btn btn-primary" data-action="retry-feed">Try again</button></section>';
+    }
+    if (ui.loading === "admin") {
+      return "<h1>Reviewer queue</h1>" + skeletons(3);
+    }
+    var tab = route.params.get("tab") || "queue";
+    var status = route.params.get("status") || "submitted";
+    var tabs = '<div class="admin-tabs" role="tablist"><a class="btn btn-small ' + (tab === "queue" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=queue&status=' + esc(status) + '">Documents</a>' +
+      '<a class="btn btn-small ' + (tab === "reports" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=reports">Reports</a>' +
+      '<a class="btn btn-small ' + (tab === "audit" ? "btn-primary" : "btn-secondary") + '" href="#/admin?tab=audit">Audit log</a></div>';
+    var body = "";
+    if (tab === "reports") {
+      var reports = BBStore.adminReports ? BBStore.adminReports() : [];
+      body = reports.length ? reports.map(function (report) {
+        var name = report.reporter && report.reporter.display_name ? report.reporter.display_name : "Member";
+        return '<article class="panel admin-card"><p class="badge">' + esc(report.target_type) + "</p><h2>" + esc(report.reason) + "</h2><p>" + esc(report.target_label || "No label") + " · " + esc(name) + " · " + esc(timeAgo(Date.parse(report.created_at))) + "</p>" +
+          (report.details ? "<p>" + esc(report.details) + "</p>" : "") +
+          '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="resolve-report" data-id="' + esc(report.id) + '">Resolve</button>' +
+          (report.target_type === "listing" ? '<button type="button" class="btn btn-danger" data-action="hide-listing" data-id="' + esc(report.target_id) + '">Hide listing</button>' : "") +
+          "</div></article>";
+      }).join("") : emptyState("No open reports", "Listing and member reports land here.", "#/admin?tab=reports", "Refresh");
+    } else if (tab === "audit") {
+      var audit = BBStore.auditLog ? BBStore.auditLog() : [];
+      body = audit.length ? '<ul class="queue">' + audit.map(function (row) {
+        var name = row.admin && row.admin.display_name ? row.admin.display_name : "Admin";
+        return "<li><strong>" + esc(row.action) + "</strong> · " + esc(name) + " · " + esc(timeAgo(Date.parse(row.created_at))) + "</li>";
+      }).join("") + "</ul>" : emptyState("No admin actions yet", "Approvals, document opens, report resolutions and hidden listings are listed here.", "#/admin?tab=audit", "Refresh");
+    } else {
+      var queue = BBStore.adminSubmissions ? BBStore.adminSubmissions() : [];
+      body = adminStatusLinks(status) + (queue.length ? queue.map(function (row) {
+        var name = row.member && row.member.display_name ? row.member.display_name : "Member";
+        return '<article class="panel admin-card"><p class="status-pill status-' + esc(row.status) + '">' + esc(statusLabel(row.status)) + "</p><h2>" + esc(name) + "</h2><p>" + esc(row.file_name || "document") + " · " + esc(timeAgo(Date.parse(row.submitted_at))) + "</p>" +
+          (row.document_deleted_at ? "<p>The file was deleted after the retention period.</p>" : '<button type="button" class="btn btn-secondary" data-action="admin-open" data-id="' + esc(row.id) + '">Open document</button>') +
+          (ui.docUrl && ui.docFor === row.id ? '<p><img class="doc-preview" alt="Redacted proof of address" src="' + safeImg(ui.docUrl) + '"></p>' : "") +
+          '<div class="row-actions"><button type="button" class="btn btn-primary" data-action="admin-decide" data-id="' + esc(row.id) + '" data-status="verified">Approve</button>' +
+          '<button type="button" class="btn btn-secondary" data-action="admin-decide" data-id="' + esc(row.id) + '" data-status="under_review">Mark under review</button></div>' +
+          '<form data-form="admin-note" data-id="' + esc(row.id) + '"><div class="field"><label for="note-' + esc(row.id) + '">Action needed note</label><textarea id="note-' + esc(row.id) + '" name="note" maxlength="800" required placeholder="What should the member fix? Don’t include a unit number."></textarea></div><button class="btn btn-danger" type="submit">Action needed</button></form></article>';
+      }).join("") : emptyState("Nothing in this filter", "New documents show up here as Submitted.", "#/admin?tab=queue&status=submitted", "Back to submitted"));
+    }
+    return '<p class="eyebrow">Reviewers</p><h1>Reviewer queue</h1><p>Check the name and SkyPeak address on the document. Unit numbers stay in the file and off the profile.</p>' + tabs + body;
   }
 
   function viewNotFound() {
@@ -927,6 +1113,9 @@
   }
 
   function view(route) {
+    if (BBStore.booting && BBStore.booting() && !localPreview()) {
+      return '<p class="eyebrow">SkyPeak @ Bukit Batok</p><h1>BlockBuddy</h1>' + skeletons(3);
+    }
     if (route.name === "home") return viewHome();
     if (route.name === "register") return viewRegister();
     if (route.name === "verify") return viewVerify(route);
@@ -939,6 +1128,9 @@
     if (route.name === "profile") return viewProfile();
     if (route.name === "member") return viewMember(route);
     if (route.name === "help") return viewHelp();
+    if (route.name === "forgot") return viewForgot();
+    if (route.name === "update-password") return viewUpdatePassword();
+    if (route.name === "admin") return viewAdmin(route);
     return viewNotFound();
   }
 
@@ -957,6 +1149,9 @@
       profile: "Your profile",
       member: "Neighbour",
       help: "Help and safety",
+      forgot: "Reset password",
+      "update-password": "New password",
+      admin: "Reviewer queue",
       notfound: "Page not found"
     };
     return (names[route.name] || "BlockBuddy") + " · BlockBuddy";
@@ -994,31 +1189,61 @@
     }, 650);
   }
 
+  function loadable(route) {
+    return route.name === "feed" || route.name === "search" || route.name === "messages" || route.name === "thread" || route.name === "listing" || route.name === "edit" || route.name === "profile" || route.name === "member" || route.name === "verify" || route.name === "help" || route.name === "admin";
+  }
+
   function onRouteEnter(route) {
     cancelLoad();
-    var user = BBStore.sessionUser();
-    if ((route.name === "feed" || route.name === "search" || route.name === "messages") && verified(user) && !(route.name === "feed" && ui.feedError)) {
-      queueLoad(route.name);
-    }
-    if (route.name === "thread" && user) BBStore.markRead(route.id);
-    if (route.name === "edit") {
-      var listing = route.id ? BBStore.listingById(route.id) : null;
-      if (listing && user && listing.ownerId === user.id) {
-        ui.formValues = {
-          type: listing.type,
-          title: listing.title,
-          category: listing.category,
-          condition: listing.condition,
-          price: listing.price == null ? "" : String(listing.price),
-          description: listing.description
-        };
-        ui.photo = listing.photo || "";
-      } else if (!route.id) {
-        ui.formValues = { type: "sell", category: "home", condition: "Good", title: "", description: "", price: "" };
-        ui.photo = "";
+    ui.pendingEmail = route.name === "register" || route.name === "forgot" || route.name === "update-password" ? ui.pendingEmail : false;
+    ui.chatDraft = "";
+    ui.docUrl = "";
+    var user = activeUser();
+    if (window.BBDemo) {
+      if ((route.name === "feed" || route.name === "search" || route.name === "messages") && verified(user) && !(route.name === "feed" && ui.feedError)) {
+        queueLoad(route.name);
       }
+      if (route.name === "thread" && user && user.id !== "preview") BBStore.markRead(route.id);
+    } else if (loadable(route) && !(user && user.id === "preview")) {
+      ui.loading = route.name;
+      var token = ++loadToken;
+      settle(BBStore.prepare(route)).then(function (result) {
+        if (token !== loadToken) return;
+        ui.loading = null;
+        ui.feedError = !!(result && result.error);
+        ui.feedErrorMessage = result && result.error ? result.error : "";
+        ui.skipSnapshot = true;
+        if (route.name === "edit") fillEditForm(route);
+        render();
+      }).catch(function () {
+        if (token !== loadToken) return;
+        ui.loading = null;
+        ui.feedError = true;
+        ui.feedErrorMessage = "We couldn’t load this page. Check your connection and try again.";
+        render();
+      });
     }
+    if (window.BBDemo && route.name === "edit") fillEditForm(route);
     if (route.name === "verify") syncDoc(user);
+  }
+
+  function fillEditForm(route) {
+    var user = activeUser();
+    var listing = route.id ? BBStore.listingById(route.id) : null;
+    if (listing && user && listing.ownerId === user.id) {
+      ui.formValues = {
+        type: listing.type,
+        title: listing.title,
+        category: listing.category,
+        condition: listing.condition,
+        price: listing.price == null ? "" : String(listing.price),
+        description: listing.description
+      };
+      ui.photo = safeImg(listing.photo) || "";
+    } else if (!route.id) {
+      ui.formValues = { type: "sell", category: "home", condition: "Good", title: "", description: "", price: "" };
+      ui.photo = "";
+    }
   }
 
   function render() {
@@ -1042,7 +1267,7 @@
     if (!app) return;
     app.innerHTML = shell(route, view(route));
     document.title = pageTitle(route);
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     document.body.classList.toggle("has-tabs", !!user);
     document.body.classList.toggle("in-thread", route.name === "thread");
     afterRender(route, entered);
@@ -1168,7 +1393,7 @@
   }
 
   function sampleBill() {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     var name = user ? user.preferredName : "Alex Tan";
     var canvas = document.createElement("canvas");
     canvas.width = 900;
@@ -1322,17 +1547,21 @@
     ui.uploadError = false;
     var token = ++ui.uploadToken;
     render();
-    window.setTimeout(function () {
-      if (token !== ui.uploadToken) return;
-      ui.uploading = false;
-      if (ui.failNext) {
+    var wait = window.BBDemo ? new Promise(function (resolve) { window.setTimeout(resolve, 700); }) : Promise.resolve();
+    wait.then(function () {
+      if (token !== ui.uploadToken) return null;
+      if (window.BBDemo && ui.failNext) {
         ui.failNext = false;
+        ui.uploading = false;
         ui.uploadError = true;
         ui.uploadErrorMessage = "The upload did not go through. Nothing left this browser — your preview is still here.";
         render();
-        return;
+        return null;
       }
-      var result = BBStore.submitDocument(ui.pendingDoc);
+      return settle(BBStore.submitDocument(ui.pendingDoc));
+    }).then(function (result) {
+      if (!result || token !== ui.uploadToken) return;
+      ui.uploading = false;
       if (!result.ok) {
         ui.uploadError = true;
         ui.uploadErrorMessage = result.error || "The upload did not go through. Try again.";
@@ -1343,12 +1572,19 @@
       docSession.name = "";
       docSession.rects = [];
       ui.pendingDoc = null;
+      ui.routeKey = null;
       render();
-    }, 700);
+    }).catch(function () {
+      if (token !== ui.uploadToken) return;
+      ui.uploading = false;
+      ui.uploadError = true;
+      ui.uploadErrorMessage = "The upload did not go through. Your preview is still here.";
+      render();
+    });
   }
 
   function ensureVerifiedForPreview() {
-    var user = BBStore.sessionUser();
+    var user = activeUser();
     if (!user) {
       ui.reviewerNote = "Sign in first, or continue as the demo neighbour.";
       render();
@@ -1422,9 +1658,49 @@
       if (!emailOk(signEmail)) signErrors.email = "Enter the email on the account.";
       if (!signPassword) signErrors.password = "Enter the password.";
       if (Object.keys(signErrors).length) return showErrors({ email: signEmail }, signErrors);
-      var signed = BBStore.signIn(signEmail, signPassword);
-      if (!signed.ok) return showErrors({ email: signEmail }, { email: signed.error });
-      location.hash = verified(signed.user) ? "#/feed" : "#/verify";
+      settle(BBStore.signIn(signEmail, signPassword)).then(function (signed) {
+        if (!signed.ok) return showErrors({ email: signEmail }, { email: signed.error });
+        location.hash = verified(signed.user) ? "#/feed" : "#/verify";
+      });
+      return;
+    }
+    if (kind === "forgot") {
+      var forgot = new FormData(form);
+      var forgotEmail = String(forgot.get("email") || "").trim();
+      if (!emailOk(forgotEmail)) return showErrors({ email: forgotEmail }, { email: "Enter the email on the account." });
+      settle(BBStore.requestReset(forgotEmail)).then(function (result) {
+        if (!result.ok) return showErrors({ email: forgotEmail }, { email: result.error });
+        ui.pendingEmail = true;
+        ui.fieldErrors = {};
+        render();
+      });
+      return;
+    }
+    if (kind === "update-password") {
+      var nextPassword = String(new FormData(form).get("password") || "");
+      var nextConfirm = String(new FormData(form).get("confirm") || "");
+      var passwordErrors = {};
+      if (nextPassword.length < 8) passwordErrors.password = "Use at least 8 characters.";
+      if (nextPassword !== nextConfirm) passwordErrors.confirm = "Those passwords don’t match.";
+      if (Object.keys(passwordErrors).length) return showErrors({}, passwordErrors);
+      settle(BBStore.updatePassword(nextPassword)).then(function (result) {
+        if (!result.ok) return showErrors({}, { password: result.error });
+        ui.pendingEmail = true;
+        ui.fieldErrors = {};
+        toast("Password updated.");
+      });
+      return;
+    }
+    if (kind === "admin-note") {
+      var note = String(new FormData(form).get("note") || "").trim();
+      if (!note) return toast("Write a note before marking action needed.");
+      if (BBPrivacy.containsUnitNumber(note)) return toast("Take the unit number out of the note.");
+      settle(BBStore.adminReview(form.dataset.id, "action_needed", note)).then(function (result) {
+        if (!result.ok) return toast(result.error);
+        ui.routeKey = null;
+        toast("The member will see that note.");
+        render();
+      });
       return;
     }
     if (kind === "register") {
@@ -1443,10 +1719,18 @@
       if (!form.querySelector('[name="guidelines"]').checked) errors.guidelines = "Agree to the community guidelines to join.";
       var values = { preferredName: preferredName, email: regEmail, resident: form.querySelector('[name="resident"]').checked ? "on" : "", guidelines: form.querySelector('[name="guidelines"]').checked ? "on" : "" };
       if (Object.keys(errors).length) return showErrors(values, errors);
-      var created = BBStore.register({ preferredName: preferredName, email: regEmail, password: password });
-      if (!created.ok) return showErrors(values, { email: created.error });
-      docSession = blankDoc();
-      location.hash = "#/verify?welcome=1";
+      settle(BBStore.register({ preferredName: preferredName, email: regEmail, password: password })).then(function (created) {
+        if (!created.ok) return showErrors(values, { email: created.error });
+        docSession = blankDoc();
+        if (created.pending) {
+          ui.pendingEmail = true;
+          ui.fieldErrors = {};
+          ui.formValues = {};
+          render();
+          return;
+        }
+        location.hash = "#/verify?welcome=1";
+      });
       return;
     }
     if (kind === "verify") {
@@ -1494,7 +1778,7 @@
     if (Object.keys(errors).length) return showErrors(values, errors);
     var existing = data.get("id") ? BBStore.listingById(String(data.get("id"))) : null;
     var art = existing && existing.category === category ? existing.art : (ART_FOR[category] || "other");
-    var saved = BBStore.saveListing({
+    settle(BBStore.saveListing({
       id: existing ? existing.id : null,
       type: type,
       title: title,
@@ -1503,12 +1787,14 @@
       condition: condition,
       price: price,
       art: art,
-      photo: ui.photo || ""
+      photo: ui.photo && ui.photo.indexOf("data:image/") === 0 ? ui.photo : "",
+      clearPhoto: !ui.photo && !!(existing && existing.photoPath)
+    })).then(function (saved) {
+      if (!saved.ok) return showErrors(values, { title: saved.error });
+      var suffix = existing ? "?updated=1" : "?posted=1";
+      location.hash = "#/listing/" + saved.listing.id + suffix;
+      if (saved.warning) toast(saved.warning);
     });
-    if (!saved.ok) return showErrors(values, { title: saved.error });
-    var suffix = existing ? "?updated=1" : "?posted=1";
-    location.hash = "#/listing/" + saved.listing.id + suffix;
-    if (saved.warning) toast(saved.warning);
   }
 
   function submitChat(form) {
@@ -1530,16 +1816,19 @@
       }
       return;
     }
-    var result = BBStore.sendMessage(form.dataset.thread, body);
-    if (!result.ok) {
-      if (err) {
-        err.hidden = false;
-        err.textContent = result.error;
+    settle(BBStore.sendMessage(form.dataset.thread, body)).then(function (result) {
+      if (!result.ok) {
+        if (err) {
+          err.hidden = false;
+          err.textContent = result.error;
+        }
+        return;
       }
-      return;
-    }
-    ui.focusChat = true;
-    render();
+      ui.chatDraft = "";
+      ui.focusChat = true;
+      ui.skipSnapshot = true;
+      render();
+    });
   }
 
   function submitProfile(form) {
@@ -1552,10 +1841,11 @@
       errors.bio = "Unit numbers stay off your profile. Neighbours only see that you live at SkyPeak.";
     }
     if (Object.keys(errors).length) return showErrors({ preferredName: name, bio: bio }, errors);
-    var result = BBStore.updateProfile({ preferredName: name, bio: bio });
-    if (!result.ok) return showErrors({ preferredName: name, bio: bio }, { bio: result.error });
-    ui.formValues = {};
-    toast("Profile saved.");
+    settle(BBStore.updateProfile({ preferredName: name, bio: bio })).then(function (result) {
+      if (!result.ok) return showErrors({ preferredName: name, bio: bio }, { bio: result.error });
+      ui.formValues = {};
+      toast("Profile saved.");
+    });
   }
 
   function submitReport(form, general) {
@@ -1572,26 +1862,27 @@
       render();
       return;
     }
-    var result = BBStore.addReport({
+    settle(BBStore.addReport({
       targetType: general ? "general" : ui.report.targetType,
       targetId: general ? "" : ui.report.targetId,
       targetLabel: general ? "General safety note" : ui.report.targetLabel,
       reason: reason,
       details: details
+    })).then(function (result) {
+      if (!result.ok) {
+        if (general) return showErrors({ reason: reason, details: details }, { reason: result.error });
+        ui.report.error = result.error;
+        render();
+        return;
+      }
+      ui.fieldErrors = {};
+      ui.formValues = {};
+      if (general) toast(window.BBDemo ? "Report saved on this device." : "Report sent to reviewers.");
+      else {
+        ui.report.done = true;
+        render();
+      }
     });
-    if (!result.ok) {
-      if (general) return showErrors({ reason: reason, details: details }, { reason: result.error });
-      ui.report.error = result.error;
-      render();
-      return;
-    }
-    ui.fieldErrors = {};
-    ui.formValues = {};
-    if (general) toast("Report saved on this device.");
-    else {
-      ui.report.done = true;
-      render();
-    }
   }
 
   function onClick(event) {
@@ -1665,11 +1956,12 @@
       return;
     }
     if (action === "sign-out") {
-      BBStore.signOut();
-      docSession = blankDoc();
-      ui.menu = false;
-      if ((location.hash || "#/") !== "#/") location.hash = "#/";
-      toast("Signed out. Demo data is still on this device.");
+      settle(BBStore.signOut()).then(function () {
+        docSession = blankDoc();
+        ui.menu = false;
+        if ((location.hash || "#/") !== "#/") location.hash = "#/";
+        toast(window.BBDemo ? "Signed out. Demo data is still on this device." : "Signed out.");
+      });
       return;
     }
     if (action === "ask-reset") {
@@ -1718,8 +2010,10 @@
     }
     if (action === "retry-feed") {
       ui.feedError = false;
-      seen.feed = false;
-      go("#/feed");
+      ui.feedErrorMessage = "";
+      seen[parseRoute().name] = false;
+      ui.routeKey = null;
+      render();
       return;
     }
     if (action === "open-filters") {
@@ -1747,7 +2041,7 @@
       return;
     }
     if (action === "use-sample") {
-      var user = BBStore.sessionUser();
+      var user = activeUser();
       if (!user) return;
       docSession.userId = user.id;
       docSession.dataUrl = sampleBill();
@@ -1796,14 +2090,16 @@
     }
     if (action === "message") {
       var otherId = actionEl.dataset.user;
-      var me = BBStore.sessionUser();
+      var me = activeUser();
       if (!me || !verified(me)) return;
       if (BBStore.isBlocked(me.id, otherId)) {
         toast("Unblock this neighbour before messaging.");
         return;
       }
-      var thread = BBStore.ensureThread(otherId, actionEl.dataset.listing || null);
-      if (thread) location.hash = "#/messages/" + thread.id;
+      settle(BBStore.ensureThread(otherId, actionEl.dataset.listing || null)).then(function (thread) {
+        if (thread) location.hash = "#/messages/" + thread.id;
+        else toast("Messaging isn’t available with this neighbour.");
+      });
       return;
     }
     if (action === "open-report") {
@@ -1827,26 +2123,79 @@
         confirmLabel: "Block",
         danger: true,
         run: function () {
-          BBStore.blockUser(blockId);
-          toast("Blocked. You can undo this from your profile.");
+          settle(BBStore.blockUser(blockId)).then(function (result) {
+            if (result && result.ok === false) return toast(result.error || "Could not block that neighbour.");
+            toast("Blocked. You can undo this from your profile.");
+          });
         }
       };
       render();
       return;
     }
     if (action === "unblock") {
-      BBStore.unblockUser(actionEl.dataset.user);
-      toast("Unblocked.");
+      settle(BBStore.unblockUser(actionEl.dataset.user)).then(function () {
+        toast("Unblocked.");
+      });
       return;
     }
     if (action === "mark-taken") {
-      BBStore.setListingStatus(actionEl.dataset.id, "taken");
-      toast("Marked as taken. It leaves the feed and stays on your profile.");
+      settle(BBStore.setListingStatus(actionEl.dataset.id, "taken")).then(function (result) {
+        if (result && result.ok === false) return toast(result.error);
+        toast("Marked as taken. It leaves the feed and stays on your profile.");
+      });
       return;
     }
     if (action === "relist") {
-      BBStore.setListingStatus(actionEl.dataset.id, "active");
-      toast("Back on the SkyPeak feed.");
+      settle(BBStore.setListingStatus(actionEl.dataset.id, "active")).then(function (result) {
+        if (result && result.ok === false) return toast(result.error);
+        toast("Back on the SkyPeak feed.");
+      });
+      return;
+    }
+    if (action === "view-own-doc") {
+      settle(BBStore.ownDocumentUrl(actionEl.dataset.path)).then(function (url) {
+        var safe = safeImg(url);
+        if (!safe) return toast("That file isn’t available.");
+        ui.docUrl = safe;
+        ui.docFor = "own";
+        render();
+      });
+      return;
+    }
+    if (action === "admin-open") {
+      settle(BBStore.adminOpen(actionEl.dataset.id)).then(function (result) {
+        if (!result.ok) return toast(result.error);
+        var safe = safeImg(result.url);
+        if (!safe) return toast("That file isn’t available.");
+        ui.docUrl = safe;
+        ui.docFor = actionEl.dataset.id;
+        render();
+      });
+      return;
+    }
+    if (action === "admin-decide") {
+      settle(BBStore.adminReview(actionEl.dataset.id, actionEl.dataset.status, null)).then(function (result) {
+        if (!result.ok) return toast(result.error);
+        ui.routeKey = null;
+        toast(actionEl.dataset.status === "verified" ? "Member verified." : "Marked under review.");
+        render();
+      });
+      return;
+    }
+    if (action === "resolve-report") {
+      settle(BBStore.adminResolve(actionEl.dataset.id, "")).then(function (result) {
+        if (!result.ok) return toast(result.error);
+        ui.routeKey = null;
+        toast("Report resolved.");
+        render();
+      });
+      return;
+    }
+    if (action === "hide-listing") {
+      settle(BBStore.adminHide(actionEl.dataset.id)).then(function (result) {
+        if (!result.ok) return toast(result.error);
+        toast("Listing hidden from the community.");
+      });
       return;
     }
     if (action === "ask-delete") {
@@ -1857,9 +2206,11 @@
         confirmLabel: "Delete listing",
         danger: true,
         run: function () {
-          BBStore.deleteListing(deleteId);
-          location.hash = "#/profile";
-          toast("Listing deleted.");
+          settle(BBStore.deleteListing(deleteId)).then(function (result) {
+            if (result && result.ok === false) return toast(result.error || "Could not delete that listing.");
+            location.hash = "#/profile";
+            toast("Listing deleted.");
+          });
         }
       };
       render();
@@ -1870,6 +2221,7 @@
     var target = event.target;
     if (target.dataset && target.dataset.watch === "listing") updatePreview();
     if (target.dataset && target.dataset.watch === "chat") {
+      ui.chatDraft = target.value;
       var flag = document.getElementById("chat-flag");
       if (flag) flag.hidden = !BBPrivacy.containsUnitNumber(target.value);
     }
@@ -1901,7 +2253,7 @@
       readFile(target.files[0]).then(function (url) {
         return downscale(url, 1000, 0.72);
       }).then(function (url) {
-        var user = BBStore.sessionUser();
+        var user = activeUser();
         docSession.userId = user ? user.id : null;
         docSession.dataUrl = url;
         docSession.name = target.files[0].name;
@@ -1916,7 +2268,7 @@
         ui.uploadErrorMessage = err.message === "size"
           ? "That file is over 8 MB. Choose a smaller photo and try again."
           : err.message === "type"
-            ? "Use a JPG, PNG, WEBP or GIF so you can preview it and cover sensitive details."
+            ? "Use a JPG, PNG, WEBP or GIF. PDFs stay on your device so the redaction can be burned into the picture before upload."
             : "That photo could not be read. Try a different file.";
         render();
       });
@@ -1982,9 +2334,19 @@
     }
   }
 
+  function boot() {
+    BBStore = window.BBDemo ? window.BBDemoStore : window.BBLive;
+    window.BBRerender = function () {
+      ui.skipSnapshot = true;
+      render();
+    };
+    settle(BBStore.init()).then(function () {
+      if (!location.hash) history.replaceState(null, "", "#/");
+      render();
+    });
+  }
+
   function init() {
-    BBStore.init();
-    if (!location.hash) history.replaceState(null, "", "#/");
     document.body.addEventListener("click", onClick);
     document.body.addEventListener("submit", onSubmit);
     document.body.addEventListener("input", onInput);
@@ -1993,8 +2355,10 @@
     window.addEventListener("hashchange", function () { render(); });
     window.matchMedia("(min-width: 1040px)").addEventListener("change", function () { render(); });
     window.matchMedia("(min-width: 800px)").addEventListener("change", function () { render(); });
-    render();
+    if (window.BBClientReady || window.BBDemo) boot();
+    else window.addEventListener("bb-client", boot, { once: true });
   }
 
+  var BBStore = window.BBDemoStore;
   init();
 })();
