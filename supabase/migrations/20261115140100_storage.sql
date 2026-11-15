@@ -24,7 +24,7 @@ set public = false,
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
-alter table storage.objects enable row level security;
+-- RLS on storage.objects is already enabled on hosted Supabase (and the migration role cannot alter it).
 
 drop policy if exists verification_docs_read on storage.objects;
 create policy verification_docs_read on storage.objects
