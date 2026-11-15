@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0F6B50">
   <meta name="description" content="BlockBuddy is a neighbourly marketplace for SkyPeak @ Bukit Batok. Good finds, right around the block.">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https://kilwaieocbvikzxqyavk.supabase.co; style-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src https://kilwaieocbvikzxqyavk.supabase.co wss://kilwaieocbvikzxqyavk.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; worker-src 'self' blob:">
   <title>BlockBuddy — Good finds, right around the block</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/styles.css">
@@ -18,13 +18,16 @@
   <noscript>
     <main class="wrap prose">
       <h1>BlockBuddy needs JavaScript</h1>
-      <p>This prototype runs in your browser. Enable JavaScript to sign in, browse the SkyPeak feed and try residence verification. Nothing is sent to a server.</p>
+      <p>BlockBuddy runs in your browser and talks to Supabase for accounts, listings and chat. Enable JavaScript to continue.</p>
     </main>
   </noscript>
   <script src="js/privacy.js"></script>
   <script src="js/data.js"></script>
   <script src="js/art.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/live.js"></script>
   <script src="js/app.js"></script>
+  <script type="module" src="js/client.js"></script>
 </body>
 </html>

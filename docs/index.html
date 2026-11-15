@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0F6B50">
-  <meta name="description" content="Backend pieces a real BlockBuddy launch would need. GitHub Pages cannot host them.">
-  <title>What a real launch needs · BlockBuddy</title>
+  <meta name="description" content="How BlockBuddy uses Supabase from a static GitHub Pages site.">
+  <title>How BlockBuddy works</title>
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../css/styles.css">
 </head>
@@ -23,32 +23,45 @@
         </svg>
         <span class="wordmark">Block<span>Buddy</span></span>
       </a>
-      <a class="btn btn-secondary" href="../index.html">Back to prototype</a>
+      <a class="btn btn-secondary" href="../index.html">Back to BlockBuddy</a>
     </header>
   </div>
   <main id="main" class="wrap prose">
-    <p class="eyebrow">For a real launch</p>
-    <h1>What GitHub Pages cannot host</h1>
-    <p class="lead">This prototype is a static site. Accounts, listings, chats and document previews stay in the browser. A public launch of BlockBuddy needs a backend. GitHub Pages can only serve files like these.</p>
-    <div class="banner banner-warn">
-      <h2>Pages is not a server</h2>
-      <p>GitHub Pages cannot sign people in, store private documents, run a database, deliver chat, or hold a moderation queue.</p>
-    </div>
+    <p class="eyebrow">SkyPeak @ Bukit Batok</p>
+    <h1>How BlockBuddy works</h1>
+    <p class="lead">The website is still a static site on GitHub Pages. Supabase holds the accounts, the database, private documents and live chat. The browser uses the publishable key. There is no service-role key in this project.</p>
 
-    <h2>Authentication</h2>
-    <p>Real accounts need sign-up, sign-in, password reset and sessions that expire. Passwords must be hashed. A later Singapore step could add Singpass or MyInfo so residence is checked without relying only on uploaded letters.</p>
+    <h2>Sign-in</h2>
+    <p>People create an account with email and password. Supabase emails a confirmation link, and a separate link for a forgotten password. Those links must be allowed to return to <code>https://ianjameslaird-gif.github.io/blockbuddy/</code>. The free Supabase mailer only sends a small number of messages an hour. Custom SMTP is the right setup before a wider launch.</p>
 
-    <h2>Private document storage, with retention</h2>
-    <p>Proof of residence belongs in a private bucket, encrypted, and visible only to authorised reviewers. Neighbours never receive a link. Suggested rule: delete each file 90 days after a decision, whether the member was approved or the case was closed. Redaction should happen before the file is stored. The prototype never uploads a file.</p>
+    <h2>Residence check</h2>
+    <p>A member covers account numbers on a photo. The browser burns those boxes into a JPEG and uploads only that image. PDFs are turned away so the original file never has to leave the device. The file sits in a private bucket at <code>verification-docs/&lt;user id&gt;/…</code>. The member can read their own file. Admins can read all of them. Nobody else can.</p>
+    <p>A reviewer approves it, marks it under review, or sends it back as Action Needed with a note. The member cannot change that status themselves. The file is deleted 90 days after a decision. Under review is not a decision, so that file stays until someone approves it or asks for another photo.</p>
 
-    <h2>A database</h2>
-    <p>Communities, members, verification status, listings, reports and blocks need a database. Each feed is a query for one verified community, not a public folder. Unit numbers stay in the review record and are stripped from profiles, listings and chat.</p>
+    <h2>The marketplace</h2>
+    <p>Listings, search and filters run in Postgres and are limited to verified members of the same community. Photos live in a second private bucket. Chat is a private thread between two people, delivered with Supabase Realtime. Blocking hides listings and messages in both directions. Reports go to the reviewer queue. Unit numbers such as #12-345 are rejected in the browser and again in the database. Profiles never store a unit number.</p>
 
-    <h2>Realtime chat</h2>
-    <p>Private threads need a websocket or a similar service, with block rules enforced on the server. Messages in this prototype are saved only on the device.</p>
+    <h2>Tables</h2>
+    <ul>
+      <li><code>communities</code> — SkyPeak is seeded as <code>skypeak-bukit-batok</code>. More HDB communities can be inserted later.</li>
+      <li><code>profiles</code> — display name, bio, community, verification status.</li>
+      <li><code>profile_private</code> — admin flag and the note the member sees. Neighbours cannot read this table.</li>
+      <li><code>verification_submissions</code> — each document, the decision and when the file was deleted.</li>
+      <li><code>listings</code> — sell, wanted, give away, trade.</li>
+      <li><code>blocks</code>, <code>conversations</code>, <code>messages</code>, <code>conversation_reads</code> — privacy between two neighbours.</li>
+      <li><code>reports</code> and <code>audit_log</code> — the reviewer queue and who did what.</li>
+    </ul>
 
-    <h2>Moderation</h2>
-    <p>Reviewers need a queue for residence documents and for member reports, plus an audit log of who opened a document and when the decision was made. Reports in the prototype are stored locally so the flow can be tried. Nobody else can see them.</p>
+    <h2>Who can see what</h2>
+    <p>Row level security is on for every public table. Anonymous visitors have no access. Verified neighbours see their own community’s active listings and each other’s public profiles. They do not see documents, admin flags, other people’s chats, or someone they have blocked. Admins use the same signed-in role. Extra access goes through checks such as <code>private.is_admin()</code>, which reads the admin flag without getting stuck in a policy loop. The <code>private</code> schema must stay off the Data API list.</p>
+
+    <h2>Still done by hand</h2>
+    <ul>
+      <li>Apply the two SQL migrations, then mark the first admin with the snippet in the README.</li>
+      <li>Set the Auth Site URL and redirect URLs in the Supabase dashboard.</li>
+      <li>Turn on <code>pg_cron</code> if the migration could not schedule the 90-day delete.</li>
+      <li>Add custom SMTP before the pilot grows past the free email limit.</li>
+    </ul>
   </main>
 </body>
 </html>
