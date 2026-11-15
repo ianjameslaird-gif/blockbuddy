@@ -27,7 +27,7 @@
     </header>
   </div>
   <main id="main" class="wrap prose">
-    <p class="eyebrow">SkyPeak @ Bukit Batok</p>
+    <p class="eyebrow">Pilot communities in Bukit Batok</p>
     <h1>How BlockBuddy works</h1>
     <p class="lead">The website is still a static site on GitHub Pages. Supabase holds the accounts, the database, private documents and live chat. The browser uses the publishable key. There is no service-role key in this project.</p>
 
@@ -43,7 +43,7 @@
 
     <h2>Tables</h2>
     <ul>
-      <li><code>communities</code> — SkyPeak is seeded as <code>skypeak-bukit-batok</code>. More HDB communities can be inserted later.</li>
+      <li><code>communities</code> — SkyPeak @ Bukit Batok (<code>skypeak-bukit-batok</code>), Golden Daisy, Skyline II @ Bukit Batok, Skyline I @ Bukit Batok, Sky Vista @ Bukit Batok and West Terra @ Bukit Batok. Sign-up sends <code>community_slug</code>.</li>
       <li><code>profiles</code> — display name, bio, community, verification status.</li>
       <li><code>profile_private</code> — admin flag and the note the member sees. Neighbours cannot read this table.</li>
       <li><code>verification_submissions</code> — each document, the decision and when the file was deleted.</li>
@@ -53,11 +53,11 @@
     </ul>
 
     <h2>Who can see what</h2>
-    <p>Row level security is on for every public table. Anonymous visitors have no access. Verified neighbours see their own community’s active listings and each other’s public profiles. They do not see documents, admin flags, other people’s chats, or someone they have blocked. Admins use the same signed-in role. Extra access goes through checks such as <code>private.is_admin()</code>, which reads the admin flag without getting stuck in a policy loop. The <code>private</code> schema must stay off the Data API list.</p>
+    <p>Row level security is on for every public table. Anonymous visitors can read community names, slugs and resident labels, and nothing else. Verified neighbours see their own community’s active listings and each other’s public profiles. They do not see documents, admin flags, other people’s chats, or someone they have blocked. Admins use the same signed-in role, and the admin flag is global across communities. Extra access goes through checks such as <code>private.is_admin()</code>, which reads the admin flag without getting stuck in a policy loop. The <code>private</code> schema must stay off the Data API list.</p>
 
     <h2>Still done by hand</h2>
     <ul>
-      <li>Apply the two SQL migrations, then mark the first admin with the snippet in the README.</li>
+      <li>Apply the SQL migrations in the README, including the anon read on <code>communities</code>, then mark the first admin with the snippet there.</li>
       <li>Set the Auth Site URL and redirect URLs in the Supabase dashboard.</li>
       <li>Turn on <code>pg_cron</code> if the migration could not schedule the 90-day delete.</li>
       <li>Add custom SMTP before the pilot grows past the free email limit.</li>

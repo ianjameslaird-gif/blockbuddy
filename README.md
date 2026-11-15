@@ -2,7 +2,7 @@
 
 Good finds, right around the block.
 
-BlockBuddy is a neighbourly marketplace for one HDB block at a time. The pilot community is SkyPeak @ Bukit Batok. The site is static and is hosted on GitHub Pages. Accounts, listings, chat and residence documents live in Supabase. The browser talks to Supabase with the publishable key. There is no app server in this repository.
+BlockBuddy is a neighbourly marketplace for one HDB community at a time. The pilot communities are in Bukit Batok: SkyPeak @ Bukit Batok, Golden Daisy, Skyline II @ Bukit Batok, Skyline I @ Bukit Batok, Sky Vista @ Bukit Batok and West Terra @ Bukit Batok. The site is static and is hosted on GitHub Pages. Accounts, listings, chat and residence documents live in Supabase. The browser talks to Supabase with the publishable key. There is no app server in this repository.
 
 **Site:** https://ianjameslaird-gif.github.io/blockbuddy/
 
@@ -18,12 +18,17 @@ The real sign-in screen is the default. `?demo=1` keeps the old browser-only pro
 
 ## Apply the database
 
-Run these two files in the Supabase SQL editor, in this order. They are idempotent and safe to run again. They do not mark anyone as an admin.
+Run these files in the Supabase SQL editor, in this order. They are idempotent and safe to run again. They do not mark anyone as an admin.
 
 1. `supabase/migrations/20261115140000_schema.sql`
 2. `supabase/migrations/20261115140100_storage.sql`
+3. `supabase/migrations/20261115140200_hardening_cron.sql`
+4. `supabase/migrations/20261115150000_more_communities.sql`
+5. `supabase/migrations/20261115160000_communities_anon_select.sql`
 
-`supabase/tests/stub.sql` and `supabase/tests/rls_smoke.sql` are only for a local Postgres check. Do not run them on the hosted project. `scripts/validate-sql.sh` applies the migrations twice and then the smoke test when Docker or a local Postgres is available.
+`20261115160000_communities_anon_select.sql` lets someone who is not signed in read community names, slugs and resident labels. The register screen needs that. Until it is applied, the screen uses the same six communities from `js/config.js`. Re-running the schema file revokes the anon grant, so run the communities file again after that.
+
+`supabase/tests/stub.sql` and `supabase/tests/rls_smoke.sql` are only for a local Postgres check. Do not run them on the hosted project. `scripts/validate-sql.sh` applies the migrations twice and then the smoke test when Docker or a local Postgres is available. It does not apply `20261115140200_hardening_cron.sql`, because that file needs `pg_cron`.
 
 ## Dashboard settings you still have to make
 
@@ -84,7 +89,7 @@ Search, filters and the inbox are Postgres functions (`search_listings`, `inbox`
 
 | Table | What it holds |
 | --- | --- |
-| `communities` | HDB communities. Seeded with SkyPeak @ Bukit Batok, slug `skypeak-bukit-batok`. |
+| `communities` | HDB communities. Six Bukit Batok pilots. Sign-up stores `community_slug` from user metadata. |
 | `profiles` | Display name, bio, community, verification status. No unit number and no email. |
 | `profile_private` | `is_admin` and the current reviewer note. Owner and admins only. |
 | `verification_submissions` | Each uploaded proof, with decision time and document-deleted time. |
@@ -98,9 +103,9 @@ Verification status is `not_submitted`, `submitted`, `under_review`, `verified` 
 
 ## Row level security
 
-Every `public` table has RLS enabled. `anon` has no grants on those tables. There is no policy that uses `using (true)` or `with check (true)`.
+Every `public` table has RLS enabled. `anon` can select `communities` and nothing else. There is no policy that uses `using (true)` or `with check (true)`.
 
-- Communities are readable by any signed-in user.
+- Communities are readable by anonymous visitors and by any signed-in user. Names, slugs and resident labels are public. Anon cannot write them.
 - A profile is readable by its owner, an admin, or a verified member of the same community when the profile itself is verified.
 - `profile_private`, submissions, reports and the audit log are owner-or-admin, and the audit log is admin-only.
 - Listings are readable by the owner, an admin, or a verified member of that community when the listing is active and neither person has blocked the other.
